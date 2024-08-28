@@ -63,8 +63,8 @@ class RelationDatabase():
 
         if db_type == 'postgresql':
             schemas = [schema for schema in inspector.get_schema_names() if
-                       schema not in ('pg_catalog', 'information_schema', 'public')]
-        elif db_type in ('redshift', 'mysql', 'starrocks', 'clickhouse', 'hive'):
+                       schema not in ('pg_catalog', 'information_schema')]
+        elif db_type in ('protonbase', 'redshift', 'mysql', 'starrocks', 'clickhouse', 'hive'):
             schemas = inspector.get_schema_names()
         else:
             raise ValueError("Unsupported database type")

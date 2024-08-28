@@ -11,6 +11,7 @@ from utils.navigation import make_sidebar
 db_type_mapping = {
     'mysql': 'MySQL',
     'postgresql': 'PostgreSQL',
+    'protonbase': 'ProtonBase',
     'redshift': 'Redshift',
     'starrocks': 'StarRocks',
     'clickhouse': 'Clickhouse',

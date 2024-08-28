@@ -146,7 +146,7 @@ def main():
     make_sidebar()
 
     # Title and Description
-    st.subheader('Generative BI Playground')
+    st.subheader('SQLGenie Playground')
 
     demo_profile_suffix = '(demo)'
     # Initialize or set up state variables
@@ -201,10 +201,11 @@ def main():
     if "previous_state" not in st.session_state:
         st.session_state.previous_state = {}
 
-    model_ids = ['anthropic.claude-3-sonnet-20240229-v1:0', 'anthropic.claude-3-5-sonnet-20240620-v1:0',
-                 'anthropic.claude-3-opus-20240229-v1:0',
-                 'anthropic.claude-3-haiku-20240307-v1:0', 'mistral.mixtral-8x7b-instruct-v0:1',
-                 'meta.llama3-70b-instruct-v1:0']
+    # model_ids = ['anthropic.claude-3-sonnet-20240229-v1:0', 'anthropic.claude-3-5-sonnet-20240620-v1:0',
+    #              'anthropic.claude-3-opus-20240229-v1:0',
+    #              'anthropic.claude-3-haiku-20240307-v1:0', 'mistral.mixtral-8x7b-instruct-v0:1',
+    #              'meta.llama3-70b-instruct-v1:0']
+    model_ids = ['anthropic.claude-3-5-sonnet-20240620-v1:0']
 
     session_state_list = list(st.session_state.get('profiles', {}).keys())
 
@@ -260,7 +261,7 @@ def main():
         clean_history = st.button("clean history", on_click=clean_st_history, args=[selected_profile])
 
     st.chat_message("assistant").write(
-        f"I'm the Generative BI assistant. Please **ask a question** or **select a sample question** below to start.")
+        f"I'm the SQLGenie assistant. Please **ask a question** or **select a sample question** below to start.")
 
     if not hava_session_state_flag:
         st.info("You should first create a database connection and then create a data profile")

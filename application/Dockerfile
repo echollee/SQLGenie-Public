@@ -8,11 +8,14 @@ WORKDIR /app
 
 COPY requirements.txt /app/
 
-ARG AWS_REGION
+ARG AWS_REGION=cn-north-1
 ENV AWS_REGION=${AWS_REGION}
 
 # Print the AWS_REGION for verification
 RUN echo "Current AWS Region: $AWS_REGION"
+
+RUN pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip3 config set install.trusted-host pypi.tuna.tsinghua.edu.cn
 
 # Install dependencies using the appropriate PyPI source based on AWS region
 RUN if [ "$AWS_REGION" = "cn-north-1" ] || [ "$AWS_REGION" = "cn-northwest-1" ]; then \
