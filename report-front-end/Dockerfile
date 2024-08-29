@@ -15,6 +15,7 @@ RUN if [ "$AWS_REGION" = "cn-north-1" ] || [ "$AWS_REGION" = "cn-northwest-1" ];
         npm install; \
     else \
         sed -i "s/PLACEHOLDER_VITE_LOGIN_TYPE/Cognito/g" .env && \
+        npm config set registry https://registry.npmmirror.com && \
         npm install; \
     fi
 
