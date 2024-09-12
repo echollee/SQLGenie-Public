@@ -5,13 +5,13 @@ from utils.navigation import make_sidebar
 from utils.opensearch import opensearch_index_init
 
 st.set_page_config(
-    page_title="Generative BI",
+    page_title="SQLGenie",
     page_icon="👋",
 )
 
 make_sidebar()
 
-st.write("## Welcome to Generative BI using RAG on AWS!👋")
+st.write("## Welcome to SQLGenie!👋")
 
 st.sidebar.success("Select a demo above.")
 
