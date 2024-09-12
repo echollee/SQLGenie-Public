@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -204,11 +203,7 @@ def main():
     if "samaker_model" not in st.session_state:
         st.session_state.samaker_model = []
 
-    # model_ids = ['anthropic.claude-3-sonnet-20240229-v1:0', 'anthropic.claude-3-5-sonnet-20240620-v1:0',
-    #              'anthropic.claude-3-opus-20240229-v1:0',
-    #              'anthropic.claude-3-haiku-20240307-v1:0', 'mistral.mixtral-8x7b-instruct-v0:1',
-    #              'meta.llama3-70b-instruct-v1:0']
-	model_ids = ['anthropic.claude-3-5-sonnet-20240620-v1:0']
+    model_ids = ['anthropic.claude-3-5-sonnet-20240620-v1:0']
 
     if len(st.session_state.samaker_model) > 0:
         model_ids.extend(st.session_state.samaker_model)
@@ -412,7 +407,7 @@ def main():
                             st.code(sql, language="sql")
                             if not visualize_results_flag:
                                 st.session_state.messages[selected_profile].append(
-                                {"role": "assistant", "content": sql, "type": "sql"})
+                                    {"role": "assistant", "content": sql, "type": "sql"})
                             feedback = st.columns(2)
                             feedback[0].button('👍 Upvote (save as embedding for retrieval)', type='secondary',
                                                key="upvote",
@@ -473,7 +468,8 @@ def main():
                                 {"role": "assistant", "content": sql, "type": "sql"})
                         if state_machine.get_answer().sql_search_result.sql_data is not None:
                             st.session_state.messages[selected_profile].append(
-                                {"role": "assistant", "content": state_machine.get_answer().sql_search_result.sql_data, "type": "pandas"})
+                                {"role": "assistant", "content": state_machine.get_answer().sql_search_result.sql_data,
+                                 "type": "pandas"})
 
                     elif state_machine.get_state() == QueryState.ANALYZE_DATA:
                         with st.spinner('Generating data summarize...'):
@@ -489,9 +485,11 @@ def main():
                             st.session_state.previous_state[selected_profile] = "ASK_ENTITY_SELECT"
                             st.markdown(state_machine.get_answer().ask_entity_select.entity_select)
                             st.session_state.query_rewrite_history[selected_profile].append(
-                                {"role": "assistant", "content": state_machine.get_answer().ask_entity_select.entity_select})
+                                {"role": "assistant",
+                                 "content": state_machine.get_answer().ask_entity_select.entity_select})
                             st.session_state.messages[selected_profile].append(
-                                {"role": "assistant", "content": state_machine.get_answer().ask_entity_select.entity_select,
+                                {"role": "assistant",
+                                 "content": state_machine.get_answer().ask_entity_select.entity_select,
                                  "type": "text"})
                     elif state_machine.get_state() == QueryState.AGENT_TASK:
                         with st.status("Agent Cot retrieval...") as status_text:
@@ -526,7 +524,9 @@ def main():
 
                             st.markdown(state_machine.get_answer().agent_search_result.agent_summary)
                             st.session_state.messages[selected_profile].append(
-                                {"role": "assistant", "content": state_machine.get_answer().agent_search_result.agent_summary, "type": "text"})
+                                {"role": "assistant",
+                                 "content": state_machine.get_answer().agent_search_result.agent_summary,
+                                 "type": "text"})
                     else:
                         state_machine.state = QueryState.ERROR
                 if state_machine.get_state() == QueryState.COMPLETE:
