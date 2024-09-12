@@ -1,11 +1,11 @@
+from utils.logging import getLogger
 from utils.prompt import POSTGRES_DIALECT_PROMPT_CLAUDE3, MYSQL_DIALECT_PROMPT_CLAUDE3, \
     DEFAULT_DIALECT_PROMPT, AGENT_COT_EXAMPLE, AWS_REDSHIFT_DIALECT_PROMPT_CLAUDE3, STARROCKS_DIALECT_PROMPT_CLAUDE3, \
-    CLICKHOUSE_DIALECT_PROMPT_CLAUDE3, HIVE_DIALECT_PROMPT_CLAUDE3
+    CLICKHOUSE_DIALECT_PROMPT_CLAUDE3, HIVE_DIALECT_PROMPT_CLAUDE3, BIGQUERY_DIALECT_PROMPT_CLAUDE3
 from utils.prompts import guidance_prompt
 from utils.prompts import table_prompt
-import logging
 
-logger = logging.getLogger(__name__)
+logger = getLogger()
 
 support_model_ids_map = {
     "anthropic.claude-3-haiku-20240307-v1:0": "haiku-20240307v1-0",
@@ -780,7 +780,7 @@ You are a knowledge QA bot. And please answer questions based on the knowledge c
 
 <context>
 Here is a list of acronyms and their full names plus some comments, which may help you understand the context of the question.
-[{'Acronym': 'NDDC', 'Full name': 'Nike Direct Digital Commerce'},
+[{'Acronym': 'NDDC', 'Full name': 'Direct Digital Commerce'},
  {'Acronym': 'D2N', 'Full name': 'Demand to Net Revenue'},
  {'Acronym': 'SKU',
   'Full name': 'Stock Keeping Unit',
@@ -799,7 +799,7 @@ Here is a list of acronyms and their full names plus some comments, which may he
  {'Acronym': 'AP', 'Full name': 'APPAREL'},
  {'Acronym': 'EQP', 'Full name': 'EQUIPMENT'},
  {'Acronym': 'EQ', 'Full name': 'EQUIPMENT'},
- {'Acronym': 'NSW', 'Full name': 'NIKE SPORTSWEAR'},
+ {'Acronym': 'NSW', 'Full name': 'SPORTSWEAR'},
  {'Acronym': 'MTD',
   'Full name': 'Month to Date',
   'Comment': "It's the period starting from the beginning of the current month up until now, but not including today's date, because it might not be complete yet."},
@@ -858,7 +858,7 @@ You are a knowledge QA bot. And please answer questions based on the knowledge c
 
 <context>
 Here is a list of acronyms and their full names plus some comments, which may help you understand the context of the question.
-[{'Acronym': 'NDDC', 'Full name': 'Nike Direct Digital Commerce'},
+[{'Acronym': 'NDDC', 'Full name': 'Direct Digital Commerce'},
  {'Acronym': 'D2N', 'Full name': 'Demand to Net Revenue'},
  {'Acronym': 'SKU',
   'Full name': 'Stock Keeping Unit',
@@ -877,7 +877,7 @@ Here is a list of acronyms and their full names plus some comments, which may he
  {'Acronym': 'AP', 'Full name': 'APPAREL'},
  {'Acronym': 'EQP', 'Full name': 'EQUIPMENT'},
  {'Acronym': 'EQ', 'Full name': 'EQUIPMENT'},
- {'Acronym': 'NSW', 'Full name': 'NIKE SPORTSWEAR'},
+ {'Acronym': 'NSW', 'Full name': 'SPORTSWEAR'},
  {'Acronym': 'MTD',
   'Full name': 'Month to Date',
   'Comment': "It's the period starting from the beginning of the current month up until now, but not including today's date, because it might not be complete yet."},
@@ -936,7 +936,7 @@ You are a knowledge QA bot. And please answer questions based on the knowledge c
 
 <context>
 Here is a list of acronyms and their full names plus some comments, which may help you understand the context of the question.
-[{'Acronym': 'NDDC', 'Full name': 'Nike Direct Digital Commerce'},
+[{'Acronym': 'NDDC', 'Full name': 'Direct Digital Commerce'},
  {'Acronym': 'D2N', 'Full name': 'Demand to Net Revenue'},
  {'Acronym': 'SKU',
   'Full name': 'Stock Keeping Unit',
@@ -955,7 +955,7 @@ Here is a list of acronyms and their full names plus some comments, which may he
  {'Acronym': 'AP', 'Full name': 'APPAREL'},
  {'Acronym': 'EQP', 'Full name': 'EQUIPMENT'},
  {'Acronym': 'EQ', 'Full name': 'EQUIPMENT'},
- {'Acronym': 'NSW', 'Full name': 'NIKE SPORTSWEAR'},
+ {'Acronym': 'NSW', 'Full name': 'SPORTSWEAR'},
  {'Acronym': 'MTD',
   'Full name': 'Month to Date',
   'Comment': "It's the period starting from the beginning of the current month up until now, but not including today's date, because it might not be complete yet."},
@@ -1014,7 +1014,7 @@ You are a knowledge QA bot. And please answer questions based on the knowledge c
 
 <context>
 Here is a list of acronyms and their full names plus some comments, which may help you understand the context of the question.
-[{'Acronym': 'NDDC', 'Full name': 'Nike Direct Digital Commerce'},
+[{'Acronym': 'NDDC', 'Full name': 'Direct Digital Commerce'},
  {'Acronym': 'D2N', 'Full name': 'Demand to Net Revenue'},
  {'Acronym': 'SKU',
   'Full name': 'Stock Keeping Unit',
@@ -1033,7 +1033,7 @@ Here is a list of acronyms and their full names plus some comments, which may he
  {'Acronym': 'AP', 'Full name': 'APPAREL'},
  {'Acronym': 'EQP', 'Full name': 'EQUIPMENT'},
  {'Acronym': 'EQ', 'Full name': 'EQUIPMENT'},
- {'Acronym': 'NSW', 'Full name': 'NIKE SPORTSWEAR'},
+ {'Acronym': 'NSW', 'Full name': 'SPORTSWEAR'},
  {'Acronym': 'MTD',
   'Full name': 'Month to Date',
   'Comment': "It's the period starting from the beginning of the current month up until now, but not including today's date, because it might not be complete yet."},
@@ -1091,7 +1091,7 @@ You are a knowledge QA bot. And please answer questions based on the knowledge c
 
 <context>
 Here is a list of acronyms and their full names plus some comments, which may help you understand the context of the question.
-[{'Acronym': 'NDDC', 'Full name': 'Nike Direct Digital Commerce'},
+[{'Acronym': 'NDDC', 'Full name': 'Direct Digital Commerce'},
  {'Acronym': 'D2N', 'Full name': 'Demand to Net Revenue'},
  {'Acronym': 'SKU',
   'Full name': 'Stock Keeping Unit',
@@ -1110,7 +1110,7 @@ Here is a list of acronyms and their full names plus some comments, which may he
  {'Acronym': 'AP', 'Full name': 'APPAREL'},
  {'Acronym': 'EQP', 'Full name': 'EQUIPMENT'},
  {'Acronym': 'EQ', 'Full name': 'EQUIPMENT'},
- {'Acronym': 'NSW', 'Full name': 'NIKE SPORTSWEAR'},
+ {'Acronym': 'NSW', 'Full name': 'SPORTSWEAR'},
  {'Acronym': 'MTD',
   'Full name': 'Month to Date',
   'Comment': "It's the period starting from the beginning of the current month up until now, but not including today's date, because it might not be complete yet."},
@@ -2209,6 +2209,8 @@ def generate_llm_prompt(ddl, hints, prompt_map, search_box, sql_examples=None, n
         dialect_prompt = CLICKHOUSE_DIALECT_PROMPT_CLAUDE3
     elif dialect == 'hive':
         dialect_prompt = HIVE_DIALECT_PROMPT_CLAUDE3
+    elif dialect == 'bigquery':
+        dialect_prompt = BIGQUERY_DIALECT_PROMPT_CLAUDE3
     else:
         dialect_prompt = DEFAULT_DIALECT_PROMPT
 

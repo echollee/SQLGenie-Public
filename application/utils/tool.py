@@ -1,19 +1,21 @@
 import json
-import logging
 import time
 import random
 import datetime
 
 import pandas as pd
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from utils.logging import getLogger
 
+logger = getLogger()
 
 def get_generated_sql(generated_sql_response):
     sql = ""
     try:
-        return generated_sql_response.split("<sql>")[1].split("</sql>")[0]
+        if "<sql>" in generated_sql_response:
+            return generated_sql_response.split("<sql>")[1].split("</sql>")[0]
+        elif "```sql" in generated_sql_response:
+            return generated_sql_response.split("```sql")[1].split("```")[0]
     except IndexError:
         logger.error("No SQL found in the LLM's response")
         logger.error(generated_sql_response)
@@ -34,20 +36,42 @@ def get_current_time():
 
 
 def get_generated_sql_explain(generated_sql_response):
-    index = generated_sql_response.find("</sql>")
-    if index != -1:
-        return generated_sql_response[index + len("</sql>"):]
-    else:
-        return generated_sql_response
-
+    try:
+        if "<sql>" in generated_sql_response:
+            return generated_sql_response.split("<sql>")[1].split("</sql>")[1]
+        elif "```sql" in generated_sql_response:
+            return generated_sql_response.split("```sql")[1].split("```")[1]
+        else:
+            return generated_sql_response
+    except IndexError:
+        logger.error("No generated found in the LLM's response")
+        logger.error(generated_sql_response)
+    return generated_sql_response
 
 def change_class_to_str(result):
     try:
-        log_info = json.dumps(result.dict())
+        log_info = json.dumps(result.dict(), default=serialize_timestamp)
         return log_info
     except Exception as e:
         logger.error(f"Error in changing class to string: {e}")
         return ""
+
+
+def serialize_timestamp(obj):
+    """
+    Custom serialization function for handling objects of types Timestamp and Datetime.date
+    :param obj:
+    :return:
+    """
+    if isinstance(obj, pd.Timestamp):
+        return obj.strftime('%Y-%m-%d %H:%M:%S')
+    elif isinstance(obj, datetime.date):
+        return obj.strftime('%Y-%m-%d %H:%M:%S')
+    elif isinstance(obj, list):
+        return [serialize_timestamp(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {k: serialize_timestamp(v) for k, v in obj.items()}
+    raise TypeError(f'Object of type {obj.__class__.__name__} is not JSON serializable')
 
 
 def convert_timestamps_to_str(data):

@@ -1,14 +1,14 @@
 import json
-import logging
 import boto3
 import streamlit as st
 from dotenv import load_dotenv
 
 from nlq.business.model import ModelManagement
 from nlq.business.profile import ProfileManagement
+from utils.logging import getLogger
 from utils.navigation import make_sidebar
 
-logger = logging.getLogger(__name__)
+logger = getLogger()
 
 
 def new_connection_clicked():
@@ -80,11 +80,11 @@ def main():
         st.session_state['current_model'] = None
 
     if "samaker_model" not in st.session_state:
-        st.session_state.samaker_model = []
+        st.session_state.samaker_model = ModelManagement.get_all_models()
 
     with st.sidebar:
         st.title("SageMaker Model Management")
-        st.selectbox("SageMaker Model", [],
+        st.selectbox("SageMaker Model", st.session_state.samaker_model,
                      index=None,
                      placeholder="Please SageMaker Model...", key='current_sagemaker_name')
         if st.session_state.current_sagemaker_name:

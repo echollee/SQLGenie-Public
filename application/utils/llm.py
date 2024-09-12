@@ -1,11 +1,9 @@
 import json
 import boto3
+import pandas as pd
 from botocore.config import Config
+from utils.logging import getLogger
 
-from utils.prompt import POSTGRES_DIALECT_PROMPT_CLAUDE3, MYSQL_DIALECT_PROMPT_CLAUDE3, \
-    DEFAULT_DIALECT_PROMPT, SEARCH_INTENT_PROMPT_CLAUDE3, AWS_REDSHIFT_DIALECT_PROMPT_CLAUDE3
-import os
-import logging
 from langchain_core.output_parsers import JsonOutputParser
 from utils.prompts.generate_prompt import generate_llm_prompt, generate_agent_cot_system_prompt, \
     generate_intent_prompt, generate_knowledge_prompt, generate_data_visualization_prompt, \
@@ -18,8 +16,7 @@ from utils.tool import convert_timestamps_to_str
 
 from nlq.business.model import ModelManagement
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = getLogger()
 
 config = Config(
     region_name=BEDROCK_REGION,
@@ -166,6 +163,7 @@ def get_sagemaker_client():
             sagemaker_client = boto3.client(service_name='sagemaker-runtime')
     return sagemaker_client
 
+
 def invoke_model_sagemaker_endpoint(endpoint_name, body, model_type="LLM", with_response_stream=False):
     if with_response_stream:
         if model_type == "LLM":
@@ -201,88 +199,6 @@ def invoke_model_sagemaker_endpoint(endpoint_name, body, model_type="LLM", with_
             return response_body
 
 
-def claude_select_table():
-    pass
-
-
-def generate_prompt(ddl, hints, search_box, sql_examples=None, ner_example=None, model_id=None, dialect='mysql'):
-    long_string = ""
-    for table_name, table_data in ddl.items():
-        ddl_string = table_data["col_a"] if 'col_a' in table_data else table_data["ddl"]
-        long_string += "-- {}表：{}\n".format(table_name, table_data["tbl_a"] if 'tbl_a' in table_data else table_data[
-            "description"])
-        long_string += ddl_string
-        long_string += "\n"
-
-    ddl = long_string
-
-    logger.info(f'{dialect=}')
-    if dialect == 'postgresql':
-        dialect_prompt = POSTGRES_DIALECT_PROMPT_CLAUDE3
-    elif dialect == 'mysql':
-        dialect_prompt = MYSQL_DIALECT_PROMPT_CLAUDE3
-    elif dialect == 'redshift':
-        dialect_prompt = AWS_REDSHIFT_DIALECT_PROMPT_CLAUDE3
-    else:
-        dialect_prompt = DEFAULT_DIALECT_PROMPT
-
-    example_sql_prompt = ""
-    example_ner_prompt = ""
-    if sql_examples:
-        for item in sql_examples:
-            example_sql_prompt += "Q: " + item['_source']['text'] + "\n"
-            example_sql_prompt += "A: ```sql\n" + item['_source']['sql'] + "```\n"
-
-    if ner_example:
-        for item in sql_examples:
-            example_ner_prompt += "ner: " + item['_source']['entity'] + "\n"
-            example_ner_prompt += "ner info:" + item['_source']['comment'] + "\n"
-
-    if example_sql_prompt == "" and example_ner_prompt == "":
-        claude_prompt = '''Here is DDL of the database you are working on: 
-        ```
-        {ddl} 
-        ```
-        Here are some hints: {hints}
-        You need to answer the question: "{question}" in SQL. 
-        '''.format(ddl=ddl, hints=hints, question=search_box)
-    elif example_sql_prompt != "" and example_ner_prompt == "":
-        claude_prompt = '''Here is DDL of the database you are working on:
-        ```
-        {ddl}
-        ```
-        Here are some hints: {hints}
-        Also, here are some examples of generating SQL using natural language: 
-        {examples}
-        Now, you need to answer the question: "{question}" in SQL. 
-        '''.format(ddl=ddl, hints=hints, examples=example_sql_prompt, question=search_box)
-    elif example_sql_prompt == "" and example_ner_prompt != "":
-        claude_prompt = '''Here is DDL of the database you are working on:
-        ```
-        {ddl}
-        ```
-        Here are some hints: {hints}
-        Also, here are some ner info: 
-        {examples}
-        Now, you need to answer the question: "{question}" in SQL. 
-        '''.format(ddl=ddl, hints=hints, examples=example_ner_prompt, question=search_box)
-    else:
-        claude_prompt = '''Here is DDL of the database you are working on:
-        ```
-        {ddl}
-        ```
-        Here are some hints: {hints}
-        Here here are some ner info: {examples_ner}
-        Also, here are some examples of generating SQL using natural language: 
-        {examples_sql}
-        Now, you need to answer the question: "{question}" in SQL. 
-        '''.format(ddl=ddl, hints=hints, examples_sql=example_sql_prompt, examples_ner=example_ner_prompt,
-                   question=search_box)
-    print('claude_prompt')
-
-    return claude_prompt, dialect_prompt
-
-
 def invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens=2048, with_response_stream=False):
     # Prompt with user turn only.
     user_message = {"role": "user", "content": user_prompt}
@@ -291,38 +207,38 @@ def invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens=2048, with
     logger.info(f'{messages=}')
     response = ""
     model_config = {}
-    try:
-        if model_id.startswith('anthropic.claude-3'):
-            response = invoke_model_claude3(model_id, system_prompt, messages, max_tokens, with_response_stream)
-        elif model_id.startswith('mistral.mixtral-8x7b'):
-            response = invoke_mixtral_8x7b(model_id, system_prompt, messages, max_tokens, with_response_stream)
-        elif model_id.startswith('meta.llama3-70b'):
-            response = invoke_llama_70b(model_id, system_prompt, user_prompt, max_tokens, with_response_stream)
+    if model_id.startswith('anthropic.claude-3'):
+        response = invoke_model_claude3(model_id, system_prompt, messages, max_tokens, with_response_stream)
+    elif model_id.startswith('mistral.mixtral-8x7b'):
+        response = invoke_mixtral_8x7b(model_id, system_prompt, messages, max_tokens, with_response_stream)
+    elif model_id.startswith('meta.llama3-70b'):
+        response = invoke_llama_70b(model_id, system_prompt, user_prompt, max_tokens, with_response_stream)
+    elif model_id.startswith('sagemaker.'):
+        model_config = ModelManagement.get_model_by_id(model_id)
+
+        prompt_template = model_config.prompt_template
+        input_payload = model_config.input_payload
+
+        prompt = prompt_template.replace("SYSTEM_PROMPT", system_prompt).replace("USER_PROMPT", user_prompt)
+        input_payload = json.loads(input_payload)
+        input_payload_text = json.dumps(input_payload, ensure_ascii=False)
+        body = input_payload_text.replace("\"INPUT\"", json.dumps(prompt, ensure_ascii=False))
+        logger.info(f'{body=}')
+        endpoint_name = model_id[len('sagemaker.'):]
+        response = invoke_model_sagemaker_endpoint(endpoint_name, body, "LLM", with_response_stream)
+    logger.info(f'{response=}')
+    if with_response_stream:
+        return response
+    else:
+        if model_id.startswith('meta.llama3-70b'):
+            return response["generation"]
         elif model_id.startswith('sagemaker.'):
-            model_config = ModelManagement.get_model_by_id(model_id)
-            prompt_template = model_config['prompt_template']
-            input_payload = model_config['input_payload']
-            prompt = prompt_template.replace("SYSTEM_PROMPT", system_prompt).replace("USER_PROMPT", user_prompt)
-            input_payload = input_payload.replace("INPUT", prompt)
-            logger.info(f'{input_payload=}')
-            body = json.loads(input_payload)
-            endpoint_name = model_id[len('sagemaker.'):]
-            response = invoke_model_sagemaker_endpoint(endpoint_name, body, "LLM", with_response_stream)
-        if with_response_stream:
+            output_format = model_config.output_format
+            response = eval(output_format)
             return response
         else:
-            if model_id.startswith('meta.llama3-70b'):
-                return response["generation"]
-            elif model_id.startswith('sagemaker.'):
-                output_format = model_config['output_format']
-                response = eval(output_format)
-                return response
-            else:
-                final_response = response.get("content")[0].get("text")
-                return final_response
-    except Exception as e:
-        logger.error("invoke_llm_model error {}".format(e))
-    return response
+            final_response = response.get("content")[0].get("text")
+            return final_response
 
 
 def text_to_sql(ddl, hints, prompt_map, search_box, sql_examples=None, ner_example=None, model_id=None, dialect='mysql',
@@ -330,7 +246,8 @@ def text_to_sql(ddl, hints, prompt_map, search_box, sql_examples=None, ner_examp
     user_prompt, system_prompt = generate_llm_prompt(ddl, hints, prompt_map, search_box, sql_examples, ner_example,
                                                      model_id, dialect=dialect)
     max_tokens = 4096
-    response = invoke_llm_model(model_id, system_prompt, user_prompt + additional_info, max_tokens, with_response_stream)
+    response = invoke_llm_model(model_id, system_prompt, user_prompt + additional_info, max_tokens,
+                                with_response_stream)
     return response
 
 
@@ -366,31 +283,24 @@ def data_analyse_tool(model_id, prompt_map, search_box, sql_data, search_type):
 
 def get_query_intent(model_id, search_box, prompt_map):
     default_intent = {"intent": "normal_search"}
-    try:
-        user_prompt, system_prompt = generate_intent_prompt(prompt_map, search_box, model_id)
-        max_tokens = 2048
-        final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
-        logger.info(f'{final_response=}')
-        intent_result_dict = json_parse.parse(final_response)
-        return intent_result_dict
-    except Exception as e:
-        logger.error("get_query_intent is error:{}".format(e))
-        return default_intent
+
+    user_prompt, system_prompt = generate_intent_prompt(prompt_map, search_box, model_id)
+    max_tokens = 2048
+    final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+    logger.info(f'{final_response=}')
+    intent_result_dict = json_parse.parse(final_response)
+    return intent_result_dict
 
 
 def get_query_rewrite(model_id, search_box, prompt_map, chat_history):
     query_rewrite = {"intent": "original_problem", "query": search_box}
     history_query = "\n".join(chat_history)
-    try:
-        user_prompt, system_prompt = generate_query_rewrite_prompt(prompt_map, search_box, model_id, history_query)
-        max_tokens = 2048
-        final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
-        query_rewrite_result = json_parse.parse(final_response)
-        logger.info(f'{final_response=}')
-        return query_rewrite_result
-    except Exception as e:
-        logger.error("get_query_rewrite is error:{}".format(e))
-        return query_rewrite
+    user_prompt, system_prompt = generate_query_rewrite_prompt(prompt_map, search_box, model_id, history_query)
+    max_tokens = 2048
+    final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+    logger.info(f'{final_response=}')
+    query_rewrite_result = json_parse.parse(final_response)
+    return query_rewrite_result
 
 
 def knowledge_search(model_id, search_box, prompt_map):
@@ -421,10 +331,13 @@ def select_data_visualization_type(model_id, search_box, search_data, prompt_map
 
 
 def data_visualization(model_id, search_box, search_data, prompt_map):
-    search_data = search_data.fillna("")
-    columns = list(search_data.columns)
-    data_list = search_data.values.tolist()
-    all_columns_data = [columns] + data_list
+    if isinstance(search_data, pd.DataFrame):
+        search_data = search_data.fillna("")
+        columns = list(search_data.columns)
+        data_list = search_data.values.tolist()
+        all_columns_data = [columns] + data_list
+    else:
+        all_columns_data = search_data
     all_columns_data = convert_timestamps_to_str(all_columns_data)
     try:
         if len(all_columns_data) < 1:

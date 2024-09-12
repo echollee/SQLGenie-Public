@@ -1,11 +1,12 @@
-import logging
 
 from opensearchpy import OpenSearch
 from opensearchpy.helpers import bulk
 
-from utils.llm import create_vector_embedding_with_bedrock
+from utils.env_var import SAGEMAKER_ENDPOINT_EMBEDDING
+from utils.llm import create_vector_embedding_with_bedrock, create_vector_embedding_with_sagemaker
+from utils.logging import getLogger
 
-logger = logging.getLogger(__name__)
+logger = getLogger()
 
 def put_bulk_in_opensearch(list, client):
     logger.info(f"Putting {len(list)} documents in OpenSearch")
@@ -207,7 +208,11 @@ class OpenSearchDao:
         return self.opensearch_client.delete(index=index_name, id=doc_id)
 
     def search_sample(self, profile_name, top_k, index_name, query):
-        records_with_embedding = create_vector_embedding_with_bedrock(query, index_name=index_name)
+        if SAGEMAKER_ENDPOINT_EMBEDDING is not None and SAGEMAKER_ENDPOINT_EMBEDDING != "":
+            records_with_embedding = create_vector_embedding_with_sagemaker(SAGEMAKER_ENDPOINT_EMBEDDING, query,
+                                                                            index_name=index_name)
+        else:
+            records_with_embedding = create_vector_embedding_with_bedrock(query, index_name=index_name)
         return self.search_sample_with_embedding(profile_name, top_k, index_name,  records_with_embedding['vector_field'])
 
 

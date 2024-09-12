@@ -2,18 +2,19 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from dotenv import load_dotenv
-import logging
 from api.service import user_feedback_downvote
 from nlq.business.connection import ConnectionManagement
+from nlq.business.model import ModelManagement
 from nlq.business.profile import ProfileManagement
 from nlq.business.vector_store import VectorStore
 from nlq.core.chat_context import ProcessingContext
 from nlq.core.state import QueryState
 from nlq.core.state_machine import QueryStateMachine
+from utils.logging import getLogger
 from utils.navigation import make_sidebar
 from utils.env_var import opensearch_info
 
-logger = logging.getLogger(__name__)
+logger = getLogger()
 
 
 def sample_question_clicked(sample):
@@ -147,7 +148,8 @@ def main():
     # Title and Description
     st.subheader('SQLGenie Playground')
 
-    demo_profile_suffix = '(demo)'
+    st.write('Current Username: ' + st.session_state['auth_username'])
+
     # Initialize or set up state variables
 
     if "update_profile" not in st.session_state:
@@ -201,7 +203,8 @@ def main():
         st.session_state.previous_state = {}
 
     if "samaker_model" not in st.session_state:
-        st.session_state.samaker_model = []
+        st.session_state.samaker_model = ModelManagement.get_all_models()
+
 
     model_ids = ['anthropic.claude-3-5-sonnet-20240620-v1:0']
 
@@ -334,7 +337,8 @@ def main():
                     search_box=search_box,
                     query_rewrite="",
                     session_id="",
-                    user_id="",
+                    user_id=st.session_state['auth_username'],
+                    username=st.session_state['auth_username'],
                     selected_profile=selected_profile,
                     database_profile=database_profile,
                     model_type=model_type,
@@ -413,12 +417,12 @@ def main():
                                                key="upvote",
                                                use_container_width=True,
                                                on_click=upvote_clicked,
-                                               args=[search_box,
+                                               args=[state_machine.get_answer().query_rewrite,
                                                      sql])
                             feedback[1].button('👎 Downvote', type='secondary', use_container_width=True,
                                                key="downvote",
                                                on_click=downvote_clicked,
-                                               args=[search_box, sql])
+                                               args=[state_machine.get_answer().query_rewrite, sql])
                             status_text.update(
                                 label=f"Generating SQL Done",
                                 state="complete", expanded=True)
@@ -454,12 +458,12 @@ def main():
                                                    key="upvote_again",
                                                    use_container_width=True,
                                                    on_click=upvote_clicked,
-                                                   args=[search_box,
+                                                   args=[state_machine.get_answer().query_rewrite,
                                                          sql])
                                 feedback[1].button('👎 Downvote', type='secondary', use_container_width=True,
                                                    key="downcote_again",
                                                    on_click=downvote_clicked,
-                                                   args=[search_box, sql])
+                                                   args=[state_machine.get_answer().query_rewrite, sql])
                                 status_text.update(
                                     label=f"Generating SQL Done",
                                     state="complete", expanded=True)
@@ -529,15 +533,18 @@ def main():
                                  "type": "text"})
                     else:
                         state_machine.state = QueryState.ERROR
+
+                logger.info(f'{state_machine.get_state()}')
+                logger.info("state_machine is done")
                 if state_machine.get_state() == QueryState.COMPLETE:
                     if state_machine.get_answer().query_intent == "normal_search":
                         if state_machine.intent_search_result["sql_execute_result"]["status_code"] == 200:
-                            st.session_state.current_sql_result = \
-                                state_machine.intent_search_result["sql_execute_result"]["data"]
-                            do_visualize_results()
+                            st.session_state.current_sql_result = state_machine.intent_search_result["sql_execute_result"]["data"]
+                            if visualize_results_flag:
+                                do_visualize_results()
                 elif state_machine.get_state() == QueryState.ERROR:
                     with st.status("The Error Info Please Check") as status_text:
-                        st.write(state_machine.error_log)
+                        st.write(state_machine.get_answer().error_log)
                     status_text.update(label=f"The Error Info Please Check",
                                        state="error", expanded=False)
 

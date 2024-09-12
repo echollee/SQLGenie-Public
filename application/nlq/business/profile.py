@@ -1,7 +1,8 @@
-import logging
-from nlq.data_access.dynamo_profile import ProfileConfigDao, ProfileConfigEntity
 
-logger = logging.getLogger(__name__)
+from nlq.data_access.dynamo_profile import ProfileConfigDao, ProfileConfigEntity
+from utils.logging import getLogger
+
+logger = getLogger()
 
 class ProfileManagement:
     profile_config_dao = ProfileConfigDao()
@@ -53,7 +54,7 @@ class ProfileManagement:
 
     @classmethod
     def update_prompt_map(cls, profile_name, prompt_map):
-        profile_info = ProfileManagement.get_profile_by_name()
+        profile_info = ProfileManagement.get_profile_by_name(profile_name)
         entity = ProfileConfigEntity(profile_name, profile_info.conn_name, profile_info.schemas, profile_info.tables, profile_info.comments,
                                      tables_info=profile_info.tables_info, prompt_map=prompt_map,
                                      db_type=profile_info.db_type,
