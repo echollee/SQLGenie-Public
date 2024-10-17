@@ -5,9 +5,52 @@ credentials:
       failed_login_attempts: 0 # Will be managed automatically
       logged_in: False # Will be managed automatically
       name: AWS
-      password: $2b$12$NDQv5NLaWiVlNuzQYHwAo.tv.f.TuX1nbdoUZi44/Y3xv4I4QAfjy # Set the password following instructions in README
+      password: $2b$12$TKbkPfwnYxwWoVBgEracUugT7fAJ3bMONaCDhTiMIR0FnbGtOST1q
+    lisheng:
+      email: lisheng@dhgate.com
+      failed_login_attempts: 0 # Will be managed automatically
+      logged_in: False # Will be managed automatically
+      name: lisheng
+      password: $2b$12$Ku6CzruRt3m8uIIH8PhrKOAtrhz7BqNa0Vkl/Ys0/NVokJbZZQBwS
+    d1dev:
+      email: lilei@dhgate.com
+      failed_login_attempts: 0 # Will be managed automatically
+      logged_in: False # Will be managed automatically
+      name: d1dev
+      password: $2b$12$VTd9FAcRZx7xdeMJjBEF9uBBTgMRIBN.IgShKHThgsWmf4SAqrBrO
+    songzhonghua:
+      email: songzhonghua@dhgate.com
+      failed_login_attempts: 0 # Will be managed automatically
+      logged_in: False # Will be managed automatically
+      name: songzhonghua
+      password: $2b$12$vw1URaYFgAnmiIVMzBhcUOTSJNJpzShc4r/u5Rx36mIg8c/1ESNNa
+    dhdba:
+      email: lilei@dhgate.com
+      failed_login_attempts: 0 # Will be managed automatically
+      logged_in: False # Will be managed automatically
+      name: dhdba
+      password: $2b$12$ZI8RR1tnuLtWat27gy79.enq8vJF82W/p9Ls1jNMAKwPcNOeKS5V6
+    fanyunlin:
+      email: fanyunlin@dhgate.com
+      failed_login_attempts: 0 # Will be managed automatically
+      logged_in: False # Will be managed automatically
+      name: fanyunlin
+      password: $2b$12$ViQOt75KJyPupEePzwTPqujHxILFN0nrrOGQrhpo6NlhpyKjp7Liq
+    testuser:
+      email: testuser@dhgate.com
+      failed_login_attempts: 0 # Will be managed automatically
+      logged_in: False # Will be managed automatically
+      name: testuser
+      password: $2b$12$27okpVTEyfc6k.1v8O0PdOFQAZmetmW.0JsO09xdy7ZilkqEdgbrC
+    doudongyuan:
+      email: doudongyuan@dhgate.com
+      failed_login_attempts: 0 # Will be managed automatically
+      logged_in: False # Will be managed automatically
+      name: doudongyuan
+      password: $2b$12$ke/OnkH2RxB0/up3285WXeq2aYQ7n8uD1EomS4WWuT2diuYGuWyU.
+
 cookie:
-  expiry_days: 2
+  expiry_days: 30
   key: some_signature_key # Must be string
   name: some_cookie_name
 pre-authorized:

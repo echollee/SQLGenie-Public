@@ -4,7 +4,7 @@ import streamlit as st
 from utils.navigation import get_authenticator
 
 st.set_page_config(
-    page_title="SQLGenie",
+    page_title="Smart Data Assistant",
     page_icon="👋",
 )
 

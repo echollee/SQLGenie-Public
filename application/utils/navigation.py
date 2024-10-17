@@ -34,7 +34,7 @@ def make_sidebar():
     with st.sidebar:
         if st.session_state.get('authentication_status'):
             st.page_link("pages/mainpage.py", label="Index")
-            st.page_link("pages/1_🌍_Generative_BI_Playground.py", label="SQLGenie Playground", icon="🌍")
+            st.page_link("pages/1_🌍_Generative_BI_Playground.py", label="Smart Data Assistant Playground", icon="🌍")
             st.markdown(":gray[Data Customization Management]",
                         help='Add your own datasources and customize description for LLM to better understand them')
             st.page_link("pages/2_🪙_Data_Connection_Management.py", label="Data Connection Management", icon="🪙")

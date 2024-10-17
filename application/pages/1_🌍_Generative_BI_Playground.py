@@ -146,7 +146,7 @@ def main():
     make_sidebar()
 
     # Title and Description
-    st.subheader('SQLGenie Playground')
+    st.subheader('Smart Data Assistant Playground')
 
     st.write('Current Username: ' + st.session_state['auth_username'])
 
@@ -265,7 +265,7 @@ def main():
         clean_history = st.button("clean history", on_click=clean_st_history, args=[selected_profile])
 
     st.chat_message("assistant").write(
-        f"I'm the SQLGenie assistant. Please **ask a question** or **select a sample question** below to start.")
+        f"I'm the Smart Data Assistant. Please **ask a question** or **select a sample question** below to start.")
 
     if not hava_session_state_flag:
         st.info("You should first create a database connection and then create a data profile")

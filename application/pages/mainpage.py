@@ -7,13 +7,13 @@ from utils.prompts.check_prompt import check_model_id_prompt
 
 
 st.set_page_config(
-    page_title="SQLGenie",
+    page_title="Smart Data Assistant",
     page_icon="👋",
 )
 
 make_sidebar()
 
-st.write("## Welcome to SQLGenie!👋")
+st.write("## Welcome to Smart Data Assistant!👋")
 
 st.sidebar.success("Select a demo above.")
 
