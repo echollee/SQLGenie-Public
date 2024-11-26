@@ -9,13 +9,26 @@ import * as ecs_patterns from 'aws-cdk-lib/aws-ecs-patterns';
 import * as path from 'path';
 
 interface ECSStackProps extends cdk.StackProps {
-  vpc: ec2.Vpc;
-  subnets: ec2.ISubnet[];
-  cognitoUserPoolId: string;
-  authenticationType: string;
-  cognitoUserPoolClientId: string;
-  OSMasterUserSecretName: string;
-  OSHostSecretName: string;
+    vpc: ec2.IVpc;
+    subnets: ec2.ISubnet[];
+    cognitoUserPoolId: string;
+    authenticationType: string;
+    cognitoUserPoolClientId: string;
+    OSMasterUserSecretName: string;
+    OSHostSecretName: string;
+    bedrock_region: string;
+    bedrock_ak_sk: string;
+    embedding_platform: string;
+    embedding_name: string;
+    embedding_dimension: number;
+    sql_index: string;
+    ner_index: string;
+    cot_index: string;
+    log_index: string;
+    embedding_region: string;
+    oidc_jwks_url: string;
+    oidc_options: string;
+    oidc_audience: string;
 }
 
 export class ECSStack extends cdk.Stack {
@@ -126,7 +139,8 @@ export class ECSStack extends cdk.Stack {
             actions: [
                 "secretsmanager:GetSecretValue",
                 "secretsmanager:CreateSecret",
-                "secretsmanager:PutSecretValue"
+                "secretsmanager:PutSecretValue",
+                "secretsmanager:DeleteSecret",
             ],
             resources: [
                 `arn:${this.partition}:secretsmanager:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:secret:opensearch-host-url*`,
@@ -145,7 +159,7 @@ export class ECSStack extends cdk.Stack {
                     "bedrock:InvokeModelWithResponseStream"
                 ],
                 resources: [
-                    `arn:${this.partition}:bedrock:${cdk.Aws.REGION}::foundation-model/*`
+                    `arn:${this.partition}:bedrock:${props.bedrock_region || cdk.Aws.REGION}::foundation-model/*`
                 ]
             });
             taskRole.addToPolicy(bedrockAccessPolicy);
@@ -199,14 +213,16 @@ export class ECSStack extends cdk.Stack {
         });
 
         containerStreamlit.addEnvironment('OPENSEARCH_TYPE', 'service');
-        containerStreamlit.addEnvironment('AOS_INDEX', 'uba');
-        containerStreamlit.addEnvironment('AOS_INDEX_NER', 'uba_ner');
-        containerStreamlit.addEnvironment('AOS_INDEX_AGENT', 'uba_agent');
-        // containerStreamlit.addEnvironment('SAGEMAKER_EMBEDDING_REGION', cdk.Aws.REGION);
-        // containerStreamlit.addEnvironment('SAGEMAKER_SQL_REGION', cdk.Aws.REGION);
-        // containerStreamlit.addEnvironment('SAGEMAKER_ENDPOINT_EMBEDDING', '');
-        // containerStreamlit.addEnvironment('SAGEMAKER_ENDPOINT_SQL', '');
-        containerStreamlit.addEnvironment('BEDROCK_REGION', cdk.Aws.REGION);
+        containerStreamlit.addEnvironment('AOS_INDEX', props.sql_index);
+        containerStreamlit.addEnvironment('AOS_INDEX_NER', props.ner_index);
+        containerStreamlit.addEnvironment('AOS_INDEX_AGENT', props.cot_index);
+        containerStreamlit.addEnvironment('QUERY_LOG_INDEX', props.log_index);
+        containerStreamlit.addEnvironment('BEDROCK_SECRETS_AK_SK', props.bedrock_ak_sk);
+        containerStreamlit.addEnvironment('EMBEDDING_PLATFORM', props.embedding_platform);
+        containerStreamlit.addEnvironment('EMBEDDING_NAME', props.embedding_name);
+        containerStreamlit.addEnvironment('EMBEDDING_DIMENSION', String(props.embedding_dimension));
+        containerStreamlit.addEnvironment('EMBEDDING_REGION', props.embedding_region || cdk.Aws.REGION);
+        containerStreamlit.addEnvironment('BEDROCK_REGION', props.bedrock_region || cdk.Aws.REGION);
         containerStreamlit.addEnvironment('RDS_REGION_NAME', cdk.Aws.REGION);
         containerStreamlit.addEnvironment('AWS_DEFAULT_REGION', cdk.Aws.REGION);
         containerStreamlit.addEnvironment('DYNAMODB_AWS_REGION', cdk.Aws.REGION);
@@ -233,39 +249,45 @@ export class ECSStack extends cdk.Stack {
 
         // ======= 2. API Service =======
         const taskDefinitionAPI = new ecs.FargateTaskDefinition(this, 'GenBiTaskDefinitionAPI', {
-            memoryLimitMiB: 512,
-            cpu: 256,
+            memoryLimitMiB: 1024,
+            cpu: 512,
             executionRole: taskExecutionRole,
             taskRole: taskRole
         });
 
         const containerAPI = taskDefinitionAPI.addContainer('GenBiContainerAPI', {
             image: ecs.ContainerImage.fromDockerImageAsset(GenBiAPIDockerImageAsset.dockerImageAsset),
-            memoryLimitMiB: 512,
-            cpu: 256,
+            memoryLimitMiB: 1024,
+            cpu: 512,
             logging: new ecs.AwsLogDriver({
                 streamPrefix: 'GenBiAPI',
             }),
         });
 
         containerAPI.addEnvironment('OPENSEARCH_TYPE', 'service');
-        containerAPI.addEnvironment('AOS_INDEX', 'uba');
-        containerAPI.addEnvironment('AOS_INDEX_NER', 'uba_ner');
-        containerAPI.addEnvironment('AOS_INDEX_AGENT', 'uba_agent');
-        // containerAPI.addEnvironment('SAGEMAKER_EMBEDDING_REGION', cdk.Aws.REGION);
-        // containerAPI.addEnvironment('SAGEMAKER_SQL_REGION', cdk.Aws.REGION);
-        // containerAPI.addEnvironment('SAGEMAKER_ENDPOINT_EMBEDDING', '');
-        // containerAPI.addEnvironment('SAGEMAKER_ENDPOINT_SQL', '');
+        containerAPI.addEnvironment('AOS_INDEX', props.sql_index);
+        containerAPI.addEnvironment('AOS_INDEX_NER', props.ner_index);
+        containerAPI.addEnvironment('AOS_INDEX_AGENT', props.cot_index);
+        containerAPI.addEnvironment('QUERY_LOG_INDEX', props.log_index);
+        containerAPI.addEnvironment('BEDROCK_SECRETS_AK_SK', props.bedrock_ak_sk);
+        containerAPI.addEnvironment('EMBEDDING_PLATFORM', props.embedding_platform);
+        containerAPI.addEnvironment('EMBEDDING_NAME', props.embedding_name);
+        containerAPI.addEnvironment('EMBEDDING_DIMENSION', String(props.embedding_dimension));
+        containerAPI.addEnvironment('EMBEDDING_REGION', props.embedding_region || cdk.Aws.REGION);
         containerAPI.addEnvironment('VITE_LOGIN_TYPE', props.authenticationType)
         containerAPI.addEnvironment('VITE_COGNITO_REGION', cdk.Aws.REGION)
         containerAPI.addEnvironment('VITE_COGNITO_USER_POOL_ID', props.cognitoUserPoolId)
         containerAPI.addEnvironment('VITE_COGNITO_USER_POOL_WEB_CLIENT_ID', props.cognitoUserPoolClientId)
-        containerAPI.addEnvironment('BEDROCK_REGION', cdk.Aws.REGION);
+        containerAPI.addEnvironment('BEDROCK_REGION', props.bedrock_region || cdk.Aws.REGION);
         containerAPI.addEnvironment('RDS_REGION_NAME', cdk.Aws.REGION);
         containerAPI.addEnvironment('AWS_DEFAULT_REGION', cdk.Aws.REGION);
         containerAPI.addEnvironment('DYNAMODB_AWS_REGION', cdk.Aws.REGION);
         containerAPI.addEnvironment('OPENSEARCH_SECRETS_URL_HOST', props.OSHostSecretName)
         containerAPI.addEnvironment('OPENSEARCH_SECRETS_USERNAME_PASSWORD', props.OSMasterUserSecretName)
+        containerAPI.addEnvironment('OIDC_JWKS_URL', props.oidc_jwks_url);
+        containerAPI.addEnvironment('OIDC_AUDIENCE', props.oidc_audience)
+        containerAPI.addEnvironment('OIDC_OPTIONS', props.oidc_options)
+
 
         containerAPI.addPortMappings({
             containerPort: GenBiAPIDockerImageAsset.port,
@@ -319,7 +341,6 @@ export class ECSStack extends cdk.Stack {
         containerFrontend.addEnvironment('VITE_SQL_DISPLAY', 'yes');
         containerFrontend.addEnvironment('VITE_BACKEND_URL', `http://${fargateServiceAPI.loadBalancer.loadBalancerDnsName}/`);
         containerFrontend.addEnvironment('VITE_WEBSOCKET_URL', `ws://${fargateServiceAPI.loadBalancer.loadBalancerDnsName}/qa/ws`);
-        containerFrontend.addEnvironment('VITE_LOGIN_TYPE', 'Cognito');
 
         containerFrontend.addPortMappings({
             containerPort: GenBiFrontendDockerImageAsset.port,

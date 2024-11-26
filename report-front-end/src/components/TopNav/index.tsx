@@ -1,42 +1,34 @@
-import {
-  ButtonDropdownProps,
-  TopNavigation,
-} from "@cloudscape-design/components";
+import { TopNavigation } from "@cloudscape-design/components";
 // import { Mode } from '@cloudscape-design/global-styles'
+import { useMsal } from "@azure/msal-react";
 import { Density } from "@cloudscape-design/global-styles";
 import { Auth } from "aws-amplify";
 import { useState } from "react";
+import { useAuth } from "react-oidc-context";
 import { useSelector } from "react-redux";
 import {
   APP_LOGO,
   APP_RIGHT_LOGO,
   APP_TITLE,
+  APP_VERSION,
+  AUTH_WITH_AZUREAD,
+  AUTH_WITH_COGNITO,
+  AUTH_WITH_OIDC,
+  AUTH_WITH_SSO,
   CHATBOT_NAME,
-  isLoginWithCognito,
 } from "../../utils/constants";
 import { Storage } from "../../utils/helpers/storage";
 import { UserState } from "../../utils/helpers/types";
 import "./style.scss";
-
 export default function TopNav() {
   // const [theme, setTheme] = useState<Mode>(Storage.getTheme())
   const userInfo = useSelector((state: UserState) => state.userInfo);
 
-  const onUserProfileClick = ({
-    detail,
-  }: {
-    detail: ButtonDropdownProps.ItemClickDetails;
-  }) => {
-    if (detail.id === "signout") {
-      if (isLoginWithCognito) {
-        Auth.signOut().then();
-      }
-    }
-  };
-
   const [isCompact, setIsCompact] = useState<boolean>(
     Storage.getDensity() === Density.Compact
   );
+  const { instance } = useMsal();
+  const auth = useAuth();
 
   // const onChangeThemeClick = () => {
   //   if (theme === Mode.Dark) {
@@ -57,7 +49,7 @@ export default function TopNav() {
       <TopNavigation
         identity={{
           href: "/",
-          title: APP_TITLE,
+          title: `${APP_TITLE} ${APP_VERSION}`,
           logo: APP_LOGO
             ? {
                 src: APP_LOGO,
@@ -90,7 +82,21 @@ export default function TopNav() {
             text: userInfo?.displayName || "Authenticating",
             // description: `username: ${userInfo?.username}`,
             iconName: "user-profile",
-            onItemClick: onUserProfileClick,
+            onItemClick: ({ detail }) => {
+              if (detail.id === "signout") {
+                if (AUTH_WITH_COGNITO || AUTH_WITH_SSO) {
+                  Auth.signOut();
+                }
+                if (AUTH_WITH_OIDC) {
+                  auth.signoutSilent();
+                }
+                if (AUTH_WITH_AZUREAD) {
+                  instance.logoutRedirect({
+                    postLogoutRedirectUri: "/",
+                  });
+                }
+              }
+            },
             items: [
               {
                 itemType: "group",

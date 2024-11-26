@@ -2,18 +2,20 @@ import { Dispatch, SetStateAction, useCallback } from "react";
 import { useSelector } from "react-redux";
 import useWebSocket from "react-use-websocket";
 import { SendJsonMessage } from "react-use-websocket/src/lib/types";
+import { Session } from "../../components/PanelSideNav/types";
 import {
-  ChatBotMessageItem,
   ChatBotMessageType,
+  WSResponseQueryResult,
+  WSResponseStatusMessageItem,
 } from "../../components/SectionChat/types";
 import useGlobalContext from "../../hooks/useGlobalContext";
-import { DEFAULT_QUERY_CONFIG, isLoginWithCognito } from "../constants";
-import { logout } from "../helpers/tools";
+import { AUTH_WITH_NOTHING, DEFAULT_QUERY_CONFIG } from "../constants";
+import { dispatchUnauthorizedEvent } from "../helpers/tools";
 import { UserState } from "../helpers/types";
 import { getBearerTokenObj } from "./API";
 
 export function useCreateWssClient(
-  setStatusMessage: Dispatch<SetStateAction<ChatBotMessageItem[]>>
+  setStatusMessage: Dispatch<SetStateAction<WSResponseStatusMessageItem[]>>
 ) {
   const { setIsSearching, setSessions } = useGlobalContext();
   const socketUrl = process.env.VITE_WEBSOCKET_URL as string;
@@ -27,31 +29,46 @@ export function useCreateWssClient(
     //Will attempt to reconnect on all close events, such as server shutting down
     shouldReconnect: () => true,
     onMessage: (message) => handleWebSocketMessage(message),
+    heartbeat: true,
   });
 
   const handleWebSocketMessage = useCallback(
     (message: MessageEvent) => {
-      console.log("Received WebSocketMessage: ", message.data);
-      const messageJson = JSON.parse(message.data);
+      const data = message?.data;
+      console.log("Received WebSocketMessage: ", data);
+      if (data === undefined)
+        return console.warn('Received WS message.data === "undefined"');
+      if (data === "pong") return;
+      const messageJson: WSResponseStatusMessageItem | WSResponseQueryResult =
+        JSON.parse(data);
 
-      if (isLoginWithCognito) {
-        if (messageJson.content["X-Status-Code"] === 401) {
+      if (!AUTH_WITH_NOTHING) {
+        if (messageJson.content?.["X-Status-Code"] === 401) {
           setIsSearching(false);
-          return logout();
-        } else if (messageJson.content["X-Status-Code"] === 200) {
+          return dispatchUnauthorizedEvent();
+        } else if (messageJson.content?.["X-Status-Code"] === 200) {
           setIsSearching(false);
           // Do something extra here
         }
       }
 
       if (messageJson.content_type === "state") {
-        setStatusMessage((prevMsgs) => [...prevMsgs, messageJson]);
+        // update status messages
+        setStatusMessage((prevMsgs) => [
+          ...prevMsgs,
+          messageJson as WSResponseStatusMessageItem,
+        ]);
       } else {
+        // NOW: messageJson.content_type (MUST BE) === "end"
         setIsSearching(false);
         setStatusMessage([]);
-        setSessions((prevList) => {
+        // update sessions
+        setSessions((prevList: Session[]) => {
           return prevList.map((item) => {
-            if (messageJson.session_id !== item.session_id) {
+            if (
+              (messageJson as WSResponseQueryResult).session_id !==
+              item.session_id
+            ) {
               return item;
             } else {
               return {
@@ -61,7 +78,7 @@ export function useCreateWssClient(
                   ...item.messages,
                   {
                     type: ChatBotMessageType.AI,
-                    content: messageJson.content,
+                    content: (messageJson as WSResponseQueryResult).content,
                   },
                 ],
               };
@@ -108,7 +125,7 @@ export const useQueryWithTokens = () => {
           };
         });
       });
-      const extraToken = isLoginWithCognito ? getBearerTokenObj() : {};
+      const extraToken = !AUTH_WITH_NOTHING ? getBearerTokenObj() : {};
       const params = {
         query: query,
         bedrock_model_id:

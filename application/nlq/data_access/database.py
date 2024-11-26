@@ -1,6 +1,7 @@
+import json
 
 import sqlalchemy as db
-from sqlalchemy import text, Column, inspect
+from sqlalchemy import text, Column, inspect, Table
 
 from nlq.data_access.dynamo_connection import ConnectConfigEntity
 from utils.logging import getLogger
@@ -17,6 +18,7 @@ class RelationDatabase():
         'hive': 'hive',
         'athena': 'awsathena+rest',
         'bigquery': 'bigquery',
+        'presto': 'presto'
         # Add more mappings here for other databases
     }
 
@@ -39,10 +41,18 @@ class RelationDatabase():
             )
             logger.info(f"db_url: {db_url}")
         elif db_type == 'bigquery':
+            password = json.loads(password)
             db_url = db.engine.URL.create(
                 drivername=cls.db_mapping[db_type],
                 host=host,  # BigQuery project. Note: without dataset
-                query={'credentials_path': password}
+                query={'credentials_path': json.dumps(password)}
+            )
+        elif db_type == 'presto':
+            db_url = db.engine.URL.create(
+                drivername=cls.db_mapping[db_type],
+                host=host,
+                port=port,
+                database=db_name
             )
         else:
             db_url = db.engine.URL.create(
@@ -67,7 +77,11 @@ class RelationDatabase():
                     connect_args={'s3_staging_dir': db_name}
                 )
             else:
-                engine = db.create_engine(cls.get_db_url(db_type, user, password, host, port, db_name))
+                if db_type == "bigquery":
+                    password = json.loads(password)
+                    engine = db.create_engine(url=host, credentials_info=password)
+                else:
+                    engine = db.create_engine(cls.get_db_url(db_type, user, password, host, port, db_name))
             connection = engine.connect()
             return True
         except Exception as e:
@@ -80,13 +94,17 @@ class RelationDatabase():
         db_type = connection.db_type
         db_url = cls.get_db_url(db_type, connection.db_user, connection.db_pwd, connection.db_host, connection.db_port,
                                 connection.db_name)
-        engine = db.create_engine(db_url)
+        if db_type == "bigquery":
+            password = json.loads(connection.db_pwd)
+            engine = db.create_engine(url=connection.db_host, credentials_info=password)
+        else:
+            engine = db.create_engine(db_url)
         inspector = inspect(engine)
 
         if db_type == 'postgresql':
             schemas = [schema for schema in inspector.get_schema_names() if
                        schema not in ('pg_catalog', 'information_schema', 'public')]
-        elif db_type in ('redshift', 'mysql', 'starrocks', 'clickhouse', 'hive', 'athena', 'bigquery'):
+        elif db_type in ('redshift', 'mysql', 'starrocks', 'clickhouse', 'hive', 'athena', 'bigquery', 'presto'):
             schemas = inspector.get_schema_names()
         else:
             raise ValueError("Unsupported database type")
@@ -104,17 +122,54 @@ class RelationDatabase():
     def get_metadata_by_connection(cls, connection, schemas):
         db_url = cls.get_db_url(connection.db_type, connection.db_user, connection.db_pwd, connection.db_host,
                                 connection.db_port, connection.db_name)
-        engine = db.create_engine(db_url)
+        if connection.db_type == "bigquery":
+            password = json.loads(connection.db_pwd)
+            engine = db.create_engine(url=connection.db_host, credentials_info=password)
+        else:
+            engine = db.create_engine(db_url)
         # connection = engine.connect()
         metadata = db.MetaData()
         if connection.db_type == 'bigquery':
             metadata.reflect(bind=engine)
+            return metadata
+        elif connection.db_type == 'presto':
+            for s in schemas:
+                metadata.reflect(bind=engine, schema=s)
             return metadata
         else:
             for s in schemas:
                 metadata.reflect(bind=engine, schema=s, views=True)
             # metadata.reflect(bind=engine)
             return metadata
+
+    @classmethod
+    def get_metadata_by_table(cls, connection, tables):
+        db_url = cls.get_db_url(connection.db_type, connection.db_user, connection.db_pwd, connection.db_host,
+                                connection.db_port, connection.db_name)
+        if connection.db_type == "bigquery":
+            password = json.loads(connection.db_pwd)
+            engine = db.create_engine(url=connection.db_host, credentials_info=password)
+        else:
+            engine = db.create_engine(db_url)
+            logger.info(db_url)
+        metadata = db.MetaData()
+        table_info = {}
+        try:
+            for each_table in tables:
+                table_info[each_table] = {}
+                logger.info(each_table)
+                if "." in each_table:
+                    schema, table = each_table.split(".")[0], each_table.split(".")[1]
+                    table = Table(table, metadata, autoload_with=engine, schema=schema)
+                else:
+                    table = Table(each_table, metadata, autoload_with=engine)
+                logger.info(table)
+                for column in table.columns:
+                    logger.info(f"  Column Name: {column.name}, Data Type: {column.type}")
+                    table_info[each_table][column.name] = column.type
+        except Exception as e:
+            logger.error(f"Error loading table column {tables}: {e}")
+        return table_info
 
     @classmethod
     def get_table_definition_by_connection(cls, connection: ConnectConfigEntity, schemas, table_names):
@@ -155,6 +210,11 @@ class RelationDatabase():
         return table_info
 
     @classmethod
+    def get_table_column_definition_by_connection(cls, connection: ConnectConfigEntity, table_names):
+        table_column = cls.get_metadata_by_table(connection, table_names)
+        return table_column
+
+    @classmethod
     def get_hive_table_comment(cls, connection, table_names):
         table_name_comment = {}
         try:
@@ -179,3 +239,7 @@ class RelationDatabase():
         db_url = cls.get_db_url(connection.db_type, connection.db_user, connection.db_pwd, connection.db_host,
                                 connection.db_port, connection.db_name)
         return db_url
+
+    @classmethod
+    def get_password_host_by_connection(cls, connection: ConnectConfigEntity):
+        return connection.db_pwd, connection.db_host

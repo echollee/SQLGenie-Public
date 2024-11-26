@@ -49,9 +49,18 @@ class ConnectionManagement:
         return RelationDatabase.get_table_definition_by_connection(conn_config, schema_names, table_names)
 
     @classmethod
+    def get_table_column_definition_by_config(cls, conn_config: ConnectConfigEntity, table_names):
+        return RelationDatabase.get_table_column_definition_by_connection(conn_config, table_names)
+
+    @classmethod
     def get_db_url_by_name(cls, conn_name):
         conn_config = cls.get_conn_config_by_name(conn_name)
         return RelationDatabase.get_db_url_by_connection(conn_config)
+
+    @classmethod
+    def get_db_password_host_by_name(cls, conn_name):
+        conn_config = cls.get_conn_config_by_name(conn_name)
+        return RelationDatabase.get_password_host_by_connection(conn_config)
 
     @classmethod
     def get_db_type_by_name(cls, conn_name):

@@ -107,7 +107,6 @@ def main():
             conn_config = ConnectionManagement.get_conn_config_by_name(selected_conn_name)
             schema_names = st.multiselect("Schema Name", ConnectionManagement.get_all_schemas_by_config(conn_config))
             tables_from_db = ConnectionManagement.get_table_name_by_config(conn_config, schema_names)
-            print(tables_from_db)
             selected_tables = st.multiselect("Select tables included in this profile", tables_from_db)
             comments = st.text_input("Comments")
 

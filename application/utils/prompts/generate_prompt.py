@@ -1,9 +1,12 @@
+import copy
+
 from utils.logging import getLogger
 from utils.prompt import POSTGRES_DIALECT_PROMPT_CLAUDE3, MYSQL_DIALECT_PROMPT_CLAUDE3, \
     DEFAULT_DIALECT_PROMPT, AGENT_COT_EXAMPLE, AWS_REDSHIFT_DIALECT_PROMPT_CLAUDE3, STARROCKS_DIALECT_PROMPT_CLAUDE3, \
     CLICKHOUSE_DIALECT_PROMPT_CLAUDE3, HIVE_DIALECT_PROMPT_CLAUDE3, BIGQUERY_DIALECT_PROMPT_CLAUDE3
 from utils.prompts import guidance_prompt
 from utils.prompts import table_prompt
+from collections import defaultdict
 
 logger = getLogger()
 
@@ -2183,7 +2186,19 @@ guidance_prompt_mapper = guidance_prompt.GuidancePromptMapper()
 
 
 def generate_llm_prompt(ddl, hints, prompt_map, search_box, sql_examples=None, ner_example=None, model_id=None,
-                        dialect='mysql'):
+                        dialect='mysql', environment_dict=None):
+    if environment_dict is None:
+        environment_dict = defaultdict(str)
+    else:
+        environment_dict = copy.deepcopy(environment_dict)
+    prompt_environment_replace = defaultdict(str)
+    for key in environment_dict:
+        if key.startswith("{") and key.endswith("}"):
+            replace_key = key[1:-1]
+            prompt_environment_replace[replace_key] = environment_dict[key]
+        else:
+            prompt_environment_replace[key] = environment_dict[key]
+    environment_dict = prompt_environment_replace
     long_string = ""
     for table_name, table_data in ddl.items():
         ddl_string = table_data["col_a"] if 'col_a' in table_data else table_data["ddl"]
@@ -2229,6 +2244,8 @@ def generate_llm_prompt(ddl, hints, prompt_map, search_box, sql_examples=None, n
     name = support_model_ids_map.get(model_id, model_id)
     if name.startswith("sagemaker."):
         name = name[10:]
+    elif name.startswith("bedrock-api."):
+        name = name[12:]
     system_prompt = prompt_map.get('text2sql', {}).get('system_prompt', {}).get(name)
     user_prompt = prompt_map.get('text2sql', {}).get('user_prompt', {}).get(name)
     if long_string == '':
@@ -2237,112 +2254,42 @@ def generate_llm_prompt(ddl, hints, prompt_map, search_box, sql_examples=None, n
         table_prompt = long_string
     guidance_prompt = guidance_prompt_mapper.get_variable(name)
 
-    if dialect == "redshift":
-        system_prompt = system_prompt.format(dialect="Amazon Redshift")
-    else:
-        system_prompt = system_prompt.format(dialect=dialect)
+    environment_dict["dialect_prompt"] = dialect_prompt
+    environment_dict["sql_schema"] = table_prompt
+    environment_dict["sql_guidance"] = guidance_prompt
+    environment_dict["examples"] = example_sql_prompt
+    environment_dict["ner_info"] = example_ner_prompt
+    environment_dict["question"] = search_box
 
-    user_prompt = user_prompt.format(dialect_prompt=dialect_prompt, sql_schema=table_prompt,
-                                     sql_guidance=guidance_prompt, examples=example_sql_prompt,
-                                     ner_info=example_ner_prompt, question=search_box)
+
+    if dialect == "redshift":
+        environment_dict["dialect"] = "Amazon Redshift"
+        system_prompt = system_prompt.format_map(environment_dict)
+    else:
+        environment_dict["dialect"] = dialect
+        system_prompt = system_prompt.format_map(environment_dict)
+
+    user_prompt = user_prompt.format_map(environment_dict)
+
+    # user_prompt = user_prompt.format(dialect_prompt=dialect_prompt, sql_schema=table_prompt,
+    #                                  sql_guidance=guidance_prompt, examples=example_sql_prompt,
+    #                                  ner_info=example_ner_prompt, question=search_box)
 
     return user_prompt, system_prompt
 
-
-# TODO Must modify prompt
-def generate_sagemaker_intent_prompt(
-        query: str,
-        history=[],
-        meta_instruction="You are an AI assistant whose name is InternLM (书生·浦语).\n"
-                         "- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). It is designed to be helpful, honest, and harmless.\n"
-                         "- InternLM (书生·浦语) can understand and communicate fluently in the language chosen by the user such as English and 中文.",
-):
-    prompt = ""
-    if meta_instruction:
-        prompt += f"""<|im_start|>system\n{meta_instruction}<|im_end|>\n"""
-    for record in history:
-        prompt += f"""<|im_start|>user\n{record[0]}<|im_end|>\n<|im_start|>assistant\n{record[1]}<|im_end|>\n"""
-    prompt += f"""<|im_start|>user\n{query}<|im_end|>\n<|im_start|>assistant\n"""
-    return prompt
-
-
-# TODO Must modify prompt
-def generate_sagemaker_sql_prompt(ddl, hints, question, sql_examples=None, ner_example=None, dialect='mysql'):
-    prompt = """### Task
-Generate a SQL query to answer [QUESTION]{question}[/QUESTION]
-
-### Instructions
-- If you cannot answer the question with the available database schema, return 'I do not know'
-- Remember that revenue is price multiplied by quantity
-- Remember that cost is supply_price multiplied by quantity
-
-### Database Schema
-This query will run on a database whose schema is represented in this string:
-CREATE TABLE products (
-  product_id INTEGER PRIMARY KEY, -- Unique ID for each product
-  name VARCHAR(50), -- Name of the product
-  price DECIMAL(10,2), -- Price of each unit of the product
-  quantity INTEGER  -- Current quantity in stock
-);
-
-CREATE TABLE customers (
-   customer_id INTEGER PRIMARY KEY, -- Unique ID for each customer
-   name VARCHAR(50), -- Name of the customer
-   address VARCHAR(100) -- Mailing address of the customer
-);
-
-CREATE TABLE salespeople (
-  salesperson_id INTEGER PRIMARY KEY, -- Unique ID for each salesperson
-  name VARCHAR(50), -- Name of the salesperson
-  region VARCHAR(50) -- Geographic sales region
-);
-
-CREATE TABLE sales (
-  sale_id INTEGER PRIMARY KEY, -- Unique ID for each sale
-  product_id INTEGER, -- ID of product sold
-  customer_id INTEGER,  -- ID of customer who made purchase
-  salesperson_id INTEGER, -- ID of salesperson who made the sale
-  sale_date DATE, -- Date the sale occurred
-  quantity INTEGER -- Quantity of product sold
-);
-
-CREATE TABLE product_suppliers (
-  supplier_id INTEGER PRIMARY KEY, -- Unique ID for each supplier
-  product_id INTEGER, -- Product ID supplied
-  supply_price DECIMAL(10,2) -- Unit price charged by supplier
-);
-
--- sales.product_id can be joined with products.product_id
--- sales.customer_id can be joined with customers.customer_id
--- sales.salesperson_id can be joined with salespeople.salesperson_id
--- product_suppliers.product_id can be joined with products.product_id
-
-### Answer
-Given the database schema, here is the SQL query that answers [QUESTION]{question}[/QUESTION]
-[SQL]
-"""
-    prompt = prompt.format(question=question)
-    return prompt
-
-
-# TODO need to modify prompt
-def generate_sagemaker_explain_prompt(
-        query: str,
-        history=[],
-        meta_instruction="You are an AI assistant whose name is InternLM (书生·浦语).\n"
-                         "- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). It is designed to be helpful, honest, and harmless.\n"
-                         "- InternLM (书生·浦语) can understand and communicate fluently in the language chosen by the user such as English and 中文.",
-):
-    prompt = ""
-    if meta_instruction:
-        prompt += f"""<|im_start|>system\n{meta_instruction}<|im_end|>\n"""
-    for record in history:
-        prompt += f"""<|im_start|>user\n{record[0]}<|im_end|>\n<|im_start|>assistant\n{record[1]}<|im_end|>\n"""
-    prompt += f"""<|im_start|>user\n{query}<|im_end|>\n<|im_start|>assistant\n"""
-    return prompt
-
-
-def generate_agent_cot_system_prompt(ddl, prompt_map, search_box, model_id, agent_cot_example=None):
+def generate_agent_cot_system_prompt(ddl, prompt_map, search_box, model_id, agent_cot_example=None, environment_dict=None):
+    if environment_dict is None:
+        environment_dict = defaultdict(str)
+    else:
+        environment_dict = copy.deepcopy(environment_dict)
+    prompt_environment_replace = defaultdict(str)
+    for key in environment_dict:
+        if key.startswith("{") and key.endswith("}"):
+            replace_key = key[1:-1]
+            prompt_environment_replace[replace_key] = environment_dict[key]
+        else:
+            prompt_environment_replace[key] = environment_dict[key]
+    environment_dict = prompt_environment_replace
     long_string = ""
     for table_name, table_data in ddl.items():
         ddl_string = table_data["col_a"] if 'col_a' in table_data else table_data["ddl"]
@@ -2365,107 +2312,237 @@ def generate_agent_cot_system_prompt(ddl, prompt_map, search_box, model_id, agen
     name = support_model_ids_map.get(model_id, model_id)
     if name.startswith("sagemaker."):
         name = name[10:]
+    elif name.startswith("bedrock-api."):
+        name = name[12:]
     system_prompt = prompt_map.get('agent', {}).get('system_prompt', {}).get(name)
     user_prompt = prompt_map.get('agent', {}).get('user_prompt', {}).get(name)
 
+    environment_dict["table_schema_data"] = ddl
+    environment_dict["sql_guidance"] = ""
+    environment_dict["question"] = search_box
+
     # reformat prompts
     if agent_cot_example_str != "":
-        system_prompt = system_prompt.format(table_schema_data=ddl, sql_guidance="",
-                                             example_data=agent_cot_example_str)
+        environment_dict["example_data"] = agent_cot_example_str
+        system_prompt = system_prompt.format_map(environment_dict)
+        # system_prompt = system_prompt.format(table_schema_data=ddl, sql_guidance="",
+        #                                      example_data=agent_cot_example_str)
     else:
-        system_prompt = system_prompt.format(table_schema_data=ddl, sql_guidance="",
-                                             example_data=AGENT_COT_EXAMPLE)
+        environment_dict["example_data"] = AGENT_COT_EXAMPLE
+        system_prompt = system_prompt.format_map(environment_dict)
+        # system_prompt = system_prompt.format(table_schema_data=ddl, sql_guidance="",
+        #                                      example_data=AGENT_COT_EXAMPLE)
+
+    user_prompt = user_prompt.format_map(environment_dict)
     user_prompt = user_prompt.format(question=search_box)
 
     return user_prompt, system_prompt
 
 
-def generate_intent_prompt(prompt_map, search_box, model_id):
+def generate_intent_prompt(prompt_map, search_box, model_id, environment_dict=None):
+    if environment_dict is None:
+        environment_dict = defaultdict(str)
+    else:
+        environment_dict = copy.deepcopy(environment_dict)
+    prompt_environment_replace = defaultdict(str)
+    for key in environment_dict:
+        if key.startswith("{") and key.endswith("}"):
+            replace_key = key[1:-1]
+            prompt_environment_replace[replace_key] = environment_dict[key]
+        else:
+            prompt_environment_replace[key] = environment_dict[key]
+    environment_dict = prompt_environment_replace
     name = support_model_ids_map.get(model_id, model_id)
     if name.startswith("sagemaker."):
         name = name[10:]
+    elif name.startswith("bedrock-api."):
+        name = name[12:]
 
     system_prompt = prompt_map.get('intent', {}).get('system_prompt', {}).get(name)
     user_prompt = prompt_map.get('intent', {}).get('user_prompt', {}).get(name)
 
-    user_prompt = user_prompt.format(question=search_box)
-
+    environment_dict["question"] = search_box
+    user_prompt = user_prompt.format_map(environment_dict)
+    # user_prompt = user_prompt.format(question=search_box)
     return user_prompt, system_prompt
 
 
-def generate_query_rewrite_prompt(prompt_map, search_box, model_id, history_query):
+def generate_query_rewrite_prompt(prompt_map, search_box, model_id, history_query, environment_dict=None):
+    if environment_dict is None:
+        environment_dict = defaultdict(str)
+    else:
+        environment_dict = copy.deepcopy(environment_dict)
+    prompt_environment_replace = defaultdict(str)
+    for key in environment_dict:
+        if key.startswith("{") and key.endswith("}"):
+            replace_key = key[1:-1]
+            prompt_environment_replace[replace_key] = environment_dict[key]
+        else:
+            prompt_environment_replace[key] = environment_dict[key]
+    environment_dict = prompt_environment_replace
     name = support_model_ids_map.get(model_id, model_id)
     if name.startswith("sagemaker."):
         name = name[10:]
+    elif name.startswith("bedrock-api."):
+        name = name[12:]
 
     system_prompt = prompt_map.get('query_rewrite', {}).get('system_prompt', {}).get(name)
     user_prompt = prompt_map.get('query_rewrite', {}).get('user_prompt', {}).get(name)
 
-    user_prompt = user_prompt.format(chat_history=history_query, question=search_box)
+    environment_dict["chat_history"] = history_query
+    environment_dict["question"] = search_box
 
+    user_prompt = user_prompt.format_map(environment_dict)
+
+    # user_prompt = user_prompt.format(chat_history=history_query, question=search_box)
     return user_prompt, system_prompt
 
 
-def generate_knowledge_prompt(prompt_map, search_box, model_id):
+def generate_knowledge_prompt(prompt_map, search_box, model_id, environment_dict=None):
+    if environment_dict is None:
+        environment_dict = defaultdict(str)
+    else:
+        environment_dict = copy.deepcopy(environment_dict)
+    prompt_environment_replace = defaultdict(str)
+    for key in environment_dict:
+        if key.startswith("{") and key.endswith("}"):
+            replace_key = key[1:-1]
+            prompt_environment_replace[replace_key] = environment_dict[key]
+        else:
+            prompt_environment_replace[key] = environment_dict[key]
+    environment_dict = prompt_environment_replace
     name = support_model_ids_map.get(model_id, model_id)
     if name.startswith("sagemaker."):
         name = name[10:]
+    elif name.startswith("bedrock-api."):
+        name = name[12:]
 
     system_prompt = prompt_map.get('knowledge', {}).get('system_prompt', {}).get(name)
     user_prompt = prompt_map.get('knowledge', {}).get('user_prompt', {}).get(name)
 
-    user_prompt = user_prompt.format(question=search_box)
+    environment_dict["question"] = search_box
 
+    user_prompt = user_prompt.format_map(environment_dict)
+    # user_prompt = user_prompt.format(question=search_box)
     return user_prompt, system_prompt
 
 
-def generate_data_visualization_prompt(prompt_map, search_box, search_data, model_id):
+def generate_data_visualization_prompt(prompt_map, search_box, search_data, model_id, environment_dict=None):
+    if environment_dict is None:
+        environment_dict = defaultdict(str)
+    else:
+        environment_dict = copy.deepcopy(environment_dict)
+    prompt_environment_replace = defaultdict(str)
+    for key in environment_dict:
+        if key.startswith("{") and key.endswith("}"):
+            replace_key = key[1:-1]
+            prompt_environment_replace[replace_key] = environment_dict[key]
+        else:
+            prompt_environment_replace[key] = environment_dict[key]
+    environment_dict = prompt_environment_replace
     name = support_model_ids_map.get(model_id, model_id)
     if name.startswith("sagemaker."):
         name = name[10:]
+    elif name.startswith("bedrock-api."):
+        name = name[12:]
 
     system_prompt = prompt_map.get('data_visualization', {}).get('system_prompt', {}).get(name)
     user_prompt = prompt_map.get('data_visualization', {}).get('user_prompt', {}).get(name)
 
-    user_prompt = user_prompt.format(question=search_box, data=search_data)
+    environment_dict["question"] = search_box
+    environment_dict["data"] = search_data
+    user_prompt = user_prompt.format_map(environment_dict)
+
+    # user_prompt = user_prompt.format(question=search_box, data=search_data)
 
     return user_prompt, system_prompt
 
 
-def generate_agent_analyse_prompt(prompt_map, search_box, model_id, sql_data):
+def generate_agent_analyse_prompt(prompt_map, search_box, model_id, sql_data, environment_dict=None):
+    if environment_dict is None:
+        environment_dict = defaultdict(str)
+    else:
+        environment_dict = copy.deepcopy(environment_dict)
+    prompt_environment_replace = defaultdict(str)
+    for key in environment_dict:
+        if key.startswith("{") and key.endswith("}"):
+            replace_key = key[1:-1]
+            prompt_environment_replace[replace_key] = environment_dict[key]
+        else:
+            prompt_environment_replace[key] = environment_dict[key]
+    environment_dict = prompt_environment_replace
     name = support_model_ids_map.get(model_id, model_id)
     if name.startswith("sagemaker."):
         name = name[10:]
+    elif name.startswith("bedrock-api."):
+        name = name[12:]
 
     system_prompt = prompt_map.get('agent_analyse', {}).get('system_prompt', {}).get(name)
     user_prompt = prompt_map.get('agent_analyse', {}).get('user_prompt', {}).get(name)
 
-    user_prompt = user_prompt.format(question=search_box, data=sql_data)
+    environment_dict["question"] = search_box
+    environment_dict["data"] = sql_data
+
+    user_prompt = user_prompt.format_map(environment_dict)
+    # user_prompt = user_prompt.format(question=search_box, data=sql_data)
 
     return user_prompt, system_prompt
 
 
-def generate_data_summary_prompt(prompt_map, search_box, model_id, sql_data):
+def generate_data_summary_prompt(prompt_map, search_box, model_id, sql_data, environment_dict=None):
+    if environment_dict is None:
+        environment_dict = defaultdict(str)
+    else:
+        environment_dict = copy.deepcopy(environment_dict)
+    prompt_environment_replace = defaultdict(str)
+    for key in environment_dict:
+        if key.startswith("{") and key.endswith("}"):
+            replace_key = key[1:-1]
+            prompt_environment_replace[replace_key] = environment_dict[key]
+        else:
+            prompt_environment_replace[key] = environment_dict[key]
+    environment_dict = prompt_environment_replace
     name = support_model_ids_map.get(model_id, model_id)
     if name.startswith("sagemaker."):
         name = name[10:]
+    elif name.startswith("bedrock-api."):
+        name = name[12:]
 
     system_prompt = prompt_map.get('data_summary', {}).get('system_prompt', {}).get(name)
     user_prompt = prompt_map.get('data_summary', {}).get('user_prompt', {}).get(name)
 
-    user_prompt = user_prompt.format(question=search_box, data=sql_data)
+    environment_dict["question"] = search_box
+    environment_dict["data"] = sql_data
+    user_prompt = user_prompt.format_map(environment_dict)
+    # user_prompt = user_prompt.format(question=search_box, data=sql_data)
 
     return user_prompt, system_prompt
 
 
-def generate_suggest_question_prompt(prompt_map, search_box, model_id):
+def generate_suggest_question_prompt(prompt_map, search_box, model_id, environment_dict=None):
+    if environment_dict is None:
+        environment_dict = defaultdict(str)
+    else:
+        environment_dict = copy.deepcopy(environment_dict)
+    prompt_environment_replace = defaultdict(str)
+    for key in environment_dict:
+        if key.startswith("{") and key.endswith("}"):
+            replace_key = key[1:-1]
+            prompt_environment_replace[replace_key] = environment_dict[key]
+        else:
+            prompt_environment_replace[key] = environment_dict[key]
+    environment_dict = prompt_environment_replace
     name = support_model_ids_map.get(model_id, model_id)
     if name.startswith("sagemaker."):
         name = name[10:]
+    elif name.startswith("bedrock-api."):
+        name = name[12:]
 
     system_prompt = prompt_map.get('suggestion', {}).get('system_prompt', {}).get(name)
     user_prompt = prompt_map.get('suggestion', {}).get('user_prompt', {}).get(name)
 
-    user_prompt = user_prompt.format(question=search_box)
+    environment_dict["question"] = search_box
+    user_prompt = user_prompt.format_map(environment_dict)
+    # user_prompt = user_prompt.format(question=search_box)
 
     return user_prompt, system_prompt

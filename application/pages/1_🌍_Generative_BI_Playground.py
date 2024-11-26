@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -260,12 +262,13 @@ def main():
         data_with_analyse = st.checkbox("Answer With Insights", False)
         gen_suggested_question_flag = st.checkbox("Generate Suggested Questions", False)
         auto_correction_flag = st.checkbox("Auto Correcting SQL", True)
+        show_token_cost = st.checkbox("Show Token Cost", False)
         context_window = st.slider("Multiple Rounds of Context Window", 0, 10, 5)
 
         clean_history = st.button("clean history", on_click=clean_st_history, args=[selected_profile])
 
     st.chat_message("assistant").write(
-        f"I'm the Smart Data Assistant. Please **ask a question** or **select a sample question** below to start.")
+        f"I'm the Smart Data Assistant assistant. Please **ask a question** or **select a sample question** below to start.")
 
     if not hava_session_state_flag:
         st.info("You should first create a database connection and then create a data profile")
@@ -316,7 +319,6 @@ def main():
             db_url = ConnectionManagement.get_db_url_by_name(conn_name)
             database_profile['db_url'] = db_url
             database_profile['db_type'] = ConnectionManagement.get_db_type_by_name(conn_name)
-    prompt_map = database_profile['prompt_map']
 
     st.session_state.ask_replay = False
 
@@ -411,7 +413,7 @@ def main():
                             st.code(sql, language="sql")
                             if not visualize_results_flag:
                                 st.session_state.messages[selected_profile].append(
-                                    {"role": "assistant", "content": sql, "type": "sql"})
+                                {"role": "assistant", "content": sql, "type": "sql"})
                             feedback = st.columns(2)
                             feedback[0].button('👍 Upvote (save as embedding for retrieval)', type='secondary',
                                                key="upvote",
@@ -472,8 +474,7 @@ def main():
                                 {"role": "assistant", "content": sql, "type": "sql"})
                         if state_machine.get_answer().sql_search_result.sql_data is not None:
                             st.session_state.messages[selected_profile].append(
-                                {"role": "assistant", "content": state_machine.get_answer().sql_search_result.sql_data,
-                                 "type": "pandas"})
+                                {"role": "assistant", "content": state_machine.get_answer().sql_search_result.sql_data, "type": "pandas"})
 
                     elif state_machine.get_state() == QueryState.ANALYZE_DATA:
                         with st.spinner('Generating data summarize...'):
@@ -489,11 +490,9 @@ def main():
                             st.session_state.previous_state[selected_profile] = "ASK_ENTITY_SELECT"
                             st.markdown(state_machine.get_answer().ask_entity_select.entity_select)
                             st.session_state.query_rewrite_history[selected_profile].append(
-                                {"role": "assistant",
-                                 "content": state_machine.get_answer().ask_entity_select.entity_select})
+                                {"role": "assistant", "content": state_machine.get_answer().ask_entity_select.entity_select})
                             st.session_state.messages[selected_profile].append(
-                                {"role": "assistant",
-                                 "content": state_machine.get_answer().ask_entity_select.entity_select,
+                                {"role": "assistant", "content": state_machine.get_answer().ask_entity_select.entity_select,
                                  "type": "text"})
                     elif state_machine.get_state() == QueryState.AGENT_TASK:
                         with st.status("Agent Cot retrieval...") as status_text:
@@ -528,14 +527,17 @@ def main():
 
                             st.markdown(state_machine.get_answer().agent_search_result.agent_summary)
                             st.session_state.messages[selected_profile].append(
-                                {"role": "assistant",
-                                 "content": state_machine.get_answer().agent_search_result.agent_summary,
-                                 "type": "text"})
+                                {"role": "assistant", "content": state_machine.get_answer().agent_search_result.agent_summary, "type": "text"})
                     else:
                         state_machine.state = QueryState.ERROR
 
                 logger.info(f'{state_machine.get_state()}')
                 logger.info("state_machine is done")
+                if show_token_cost:
+                    with st.status("Show Token Cost") as status_text:
+                        st.write(state_machine.token_info)
+                    status_text.update(label=f"Show Token Cost",
+                                       state="complete", expanded=False)
                 if state_machine.get_state() == QueryState.COMPLETE:
                     if state_machine.get_answer().query_intent == "normal_search":
                         if state_machine.intent_search_result["sql_execute_result"]["status_code"] == 200:

@@ -1,8 +1,8 @@
 
 from utils.logging import getLogger
-
 from nlq.business.profile import ProfileManagement
 from utils.prompts.generate_prompt import support_model_ids_map, prompt_map_dict
+
 
 logger = getLogger()
 

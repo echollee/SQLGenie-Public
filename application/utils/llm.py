@@ -1,7 +1,10 @@
 import json
 import boto3
 import pandas as pd
+import requests
 from botocore.config import Config
+
+from utils.domain import ModelResponse
 from utils.logging import getLogger
 
 from langchain_core.output_parsers import JsonOutputParser
@@ -10,8 +13,8 @@ from utils.prompts.generate_prompt import generate_llm_prompt, generate_agent_co
     generate_agent_analyse_prompt, generate_data_summary_prompt, generate_suggest_question_prompt, \
     generate_query_rewrite_prompt
 
-from utils.env_var import bedrock_ak_sk_info, BEDROCK_REGION, BEDROCK_EMBEDDING_MODEL, SAGEMAKER_EMBEDDING_REGION, \
-    SAGEMAKER_SQL_REGION
+from utils.env_var import bedrock_ak_sk_info, BEDROCK_REGION, SAGEMAKER_EMBEDDING_REGION, \
+    SAGEMAKER_SQL_REGION, embedding_info, AWS_DEFAULT_REGION
 from utils.tool import convert_timestamps_to_str
 
 from nlq.business.model import ModelManagement
@@ -153,8 +156,12 @@ def get_embedding_sagemaker_client():
     return embedding_sagemaker_client
 
 
-def get_sagemaker_client():
+def get_sagemaker_client(model_region=""):
     global sagemaker_client
+    if model_region != "" and model_region != AWS_DEFAULT_REGION:
+        sagemaker_client = boto3.client(service_name='sagemaker-runtime',
+                                        region_name=model_region)
+        return sagemaker_client
     if not sagemaker_client:
         if SAGEMAKER_SQL_REGION is not None and SAGEMAKER_SQL_REGION != "":
             sagemaker_client = boto3.client(service_name='sagemaker-runtime',
@@ -164,10 +171,10 @@ def get_sagemaker_client():
     return sagemaker_client
 
 
-def invoke_model_sagemaker_endpoint(endpoint_name, body, model_type="LLM", with_response_stream=False):
+def invoke_model_sagemaker_endpoint(endpoint_name, body, model_type="LLM", with_response_stream=False, model_region=""):
     if with_response_stream:
         if model_type == "LLM":
-            response = get_sagemaker_client().invoke_endpoint_with_response_stream(
+            response = get_sagemaker_client(model_region).invoke_endpoint_with_response_stream(
                 EndpointName=endpoint_name,
                 Body=body,
                 ContentType="application/json",
@@ -182,7 +189,7 @@ def invoke_model_sagemaker_endpoint(endpoint_name, body, model_type="LLM", with_
         return response
     else:
         if model_type == "LLM":
-            response = get_sagemaker_client().invoke_endpoint(
+            response = get_sagemaker_client(model_region).invoke_endpoint(
                 EndpointName=endpoint_name,
                 Body=body,
                 ContentType="application/json",
@@ -199,6 +206,11 @@ def invoke_model_sagemaker_endpoint(endpoint_name, body, model_type="LLM", with_
             return response_body
 
 
+def invoke_bedrock_api(api_url, headers, body):
+    response = requests.post(api_url, headers=headers, data=json.dumps(body))
+    return response.json()
+
+
 def invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens=2048, with_response_stream=False):
     # Prompt with user turn only.
     user_message = {"role": "user", "content": user_prompt}
@@ -206,6 +218,8 @@ def invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens=2048, with
     logger.info(f'{system_prompt=}')
     logger.info(f'{messages=}')
     response = ""
+    model_response = ModelResponse()
+
     model_config = {}
     if model_id.startswith('anthropic.claude-3'):
         response = invoke_model_claude3(model_id, system_prompt, messages, max_tokens, with_response_stream)
@@ -215,124 +229,151 @@ def invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens=2048, with
         response = invoke_llama_70b(model_id, system_prompt, user_prompt, max_tokens, with_response_stream)
     elif model_id.startswith('sagemaker.'):
         model_config = ModelManagement.get_model_by_id(model_id)
-
         prompt_template = model_config.prompt_template
         input_payload = model_config.input_payload
-
+        llm_region = model_config.model_region
         prompt = prompt_template.replace("SYSTEM_PROMPT", system_prompt).replace("USER_PROMPT", user_prompt)
         input_payload = json.loads(input_payload)
         input_payload_text = json.dumps(input_payload, ensure_ascii=False)
         body = input_payload_text.replace("\"INPUT\"", json.dumps(prompt, ensure_ascii=False))
         logger.info(f'{body=}')
         endpoint_name = model_id[len('sagemaker.'):]
-        response = invoke_model_sagemaker_endpoint(endpoint_name, body, "LLM", with_response_stream)
+        response = invoke_model_sagemaker_endpoint(endpoint_name, body, "LLM", with_response_stream, llm_region)
+    elif model_id.startswith('bedrock-api.'):
+        model_config = ModelManagement.get_model_by_id(model_id)
+        api_header = model_config.api_header
+        input_payload = model_config.input_payload
+        api_url = model_config.api_url
+        header = json.loads(api_header)
+        body = json.loads(input_payload)
+        body["system"] = system_prompt
+        body["messages"][0]["content"] = user_prompt
+        body["model_id"] = model_id[len('bedrock-api.'):]
+        response = invoke_bedrock_api(api_url, header, body)
     logger.info(f'{response=}')
-    if with_response_stream:
-        return response
+    model_response.response = response
+    if model_id.startswith('anthropic.claude-3'):
+        model_response.token_info = response.get("usage", {})
     else:
-        if model_id.startswith('meta.llama3-70b'):
-            return response["generation"]
-        elif model_id.startswith('sagemaker.'):
-            output_format = model_config.output_format
-            response = eval(output_format)
-            return response
-        else:
-            final_response = response.get("content")[0].get("text")
-            return final_response
+        model_response.token_info = {}
+    if model_id.startswith('meta.llama3-70b'):
+        model_response.text = response["generation"]
+        return model_response
+    elif model_id.startswith('sagemaker.'):
+        output_format = model_config.output_format
+        response = eval(output_format)
+        model_response.text = response
+        return model_response
+    elif model_id.startswith('bedrock-api.'):
+        output_format = model_config.output_format
+        response = eval(output_format)
+        model_response.text = response
+        return model_response
+    else:
+        final_response = response.get("content")[0].get("text")
+        model_response.text = final_response
+        return model_response
 
 
 def text_to_sql(ddl, hints, prompt_map, search_box, sql_examples=None, ner_example=None, model_id=None, dialect='mysql',
-                model_provider=None, with_response_stream=False, additional_info=''):
+                model_provider=None, with_response_stream=False, additional_info='', environment_dict=None):
     user_prompt, system_prompt = generate_llm_prompt(ddl, hints, prompt_map, search_box, sql_examples, ner_example,
-                                                     model_id, dialect=dialect)
+                                                     model_id, dialect=dialect, environment_dict=environment_dict)
     max_tokens = 4096
-    response = invoke_llm_model(model_id, system_prompt, user_prompt + additional_info, max_tokens,
-                                with_response_stream)
-    return response
+    model_response = invoke_llm_model(model_id, system_prompt, user_prompt + additional_info, max_tokens,
+                                      with_response_stream)
+    return model_response.text, model_response
 
 
-def get_agent_cot_task(model_id, prompt_map, search_box, ddl, agent_cot_example=None):
+def get_agent_cot_task(model_id, prompt_map, search_box, ddl, agent_cot_example=None, environment_dict=None):
     default_agent_cot_task = {"task_1": search_box}
     user_prompt, system_prompt = generate_agent_cot_system_prompt(ddl, prompt_map, search_box, model_id,
-                                                                  agent_cot_example)
+                                                                  agent_cot_example, environment_dict)
     try:
         max_tokens = 2048
-        final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+        model_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+        final_response = model_response.text
         logger.info(f'{final_response=}')
         intent_result_dict = json_parse.parse(final_response)
-        return intent_result_dict
+        return intent_result_dict, model_response
     except Exception as e:
         logger.error("get_agent_cot_task is error:{}".format(e))
         return default_agent_cot_task
 
 
-def data_analyse_tool(model_id, prompt_map, search_box, sql_data, search_type):
+def data_analyse_tool(model_id, prompt_map, search_box, sql_data, search_type, environment_dict=None):
     try:
         max_tokens = 2048
         if search_type == "agent":
-            user_prompt, system_prompt = generate_agent_analyse_prompt(prompt_map, search_box, model_id, sql_data)
+            user_prompt, system_prompt = generate_agent_analyse_prompt(prompt_map, search_box, model_id, sql_data,
+                                                                       environment_dict)
         else:
-            user_prompt, system_prompt = generate_data_summary_prompt(prompt_map, search_box, model_id, sql_data)
-        final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+            user_prompt, system_prompt = generate_data_summary_prompt(prompt_map, search_box, model_id, sql_data,
+                                                                      environment_dict)
+        model_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+        final_response = model_response.text
         logger.info(f'{final_response=}')
-        return final_response
+        return final_response, model_response
     except Exception as e:
         logger.error("data_analyse_tool is error")
-    return ""
 
 
-def get_query_intent(model_id, search_box, prompt_map):
+def get_query_intent(model_id, search_box, prompt_map, environment_dict=None):
     default_intent = {"intent": "normal_search"}
 
-    user_prompt, system_prompt = generate_intent_prompt(prompt_map, search_box, model_id)
+    user_prompt, system_prompt = generate_intent_prompt(prompt_map, search_box, model_id, environment_dict)
     max_tokens = 2048
-    final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+    model_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+    final_response = model_response.text
     logger.info(f'{final_response=}')
     intent_result_dict = json_parse.parse(final_response)
-    return intent_result_dict
+    return intent_result_dict, model_response
 
 
-def get_query_rewrite(model_id, search_box, prompt_map, chat_history):
+def get_query_rewrite(model_id, search_box, prompt_map, chat_history, environment_dict=None):
     query_rewrite = {"intent": "original_problem", "query": search_box}
     history_query = "\n".join(chat_history)
-    user_prompt, system_prompt = generate_query_rewrite_prompt(prompt_map, search_box, model_id, history_query)
+    user_prompt, system_prompt = generate_query_rewrite_prompt(prompt_map, search_box, model_id, history_query,
+                                                               environment_dict)
     max_tokens = 2048
-    final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+    model_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+    final_response = model_response.text
     logger.info(f'{final_response=}')
     query_rewrite_result = json_parse.parse(final_response)
-    return query_rewrite_result
+    return query_rewrite_result, model_response
 
 
-def knowledge_search(model_id, search_box, prompt_map):
-    try:
-        user_prompt, system_prompt = generate_knowledge_prompt(prompt_map, search_box, model_id)
-        max_tokens = 2048
-        final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
-        return final_response
-    except Exception as e:
-        logger.error("knowledge_search is error")
-    return ""
+def knowledge_search(model_id, search_box, prompt_map, environment_dict=None):
+    user_prompt, system_prompt = generate_knowledge_prompt(prompt_map, search_box, model_id, environment_dict)
+    max_tokens = 2048
+    model_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+    final_response = model_response.text
+    return final_response, model_response
 
 
-def select_data_visualization_type(model_id, search_box, search_data, prompt_map):
+def select_data_visualization_type(model_id, search_box, search_data, prompt_map, environment_dict=None):
     default_data_visualization = {
         "show_type": "table",
         "format_data": []
     }
     try:
-        user_prompt, system_prompt = generate_data_visualization_prompt(prompt_map, search_box, search_data, model_id)
+        user_prompt, system_prompt = generate_data_visualization_prompt(prompt_map, search_box, search_data, model_id,
+                                                                        environment_dict)
         max_tokens = 2048
-        final_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+        model_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens, False)
+        final_response = model_response.text
         data_visualization_dict = json_parse.parse(final_response)
-        return data_visualization_dict
+        return data_visualization_dict, model_response
     except Exception as e:
         logger.error("select_data_visualization_type is error {}", e)
         return default_data_visualization
 
 
-def data_visualization(model_id, search_box, search_data, prompt_map):
+def data_visualization(model_id, search_box, search_data, prompt_map, environment_dict=None):
+    model_response = ModelResponse()
+    model_response.token_info = {}
     if len(search_data) == 0:
-        return "table", [], "-1", []
+        return "table", [], "-1", [], model_response
     if isinstance(search_data, pd.DataFrame):
         search_data = search_data.fillna("")
         columns = list(search_data.columns)
@@ -342,44 +383,67 @@ def data_visualization(model_id, search_box, search_data, prompt_map):
         all_columns_data = search_data
         columns = all_columns_data[0]
         search_data = pd.DataFrame(search_data[1:], columns=search_data[0])
+        if len(search_data) == 0:
+            return "table", search_data, "-1", [], model_response
     all_columns_data = convert_timestamps_to_str(all_columns_data)
     try:
         if len(all_columns_data) < 1:
-            return "table", all_columns_data, "-1", []
+            return "table", all_columns_data, "-1", [], model_response
         else:
             if len(all_columns_data) > 10:
-                all_columns_data_sample = all_columns_data[0:5]
+                all_columns_data_sample = all_columns_data[0:3]
             else:
-                all_columns_data_sample = all_columns_data
-            model_select_type_dict = select_data_visualization_type(model_id, search_box, all_columns_data_sample,
-                                                                    prompt_map)
+                all_columns_data_sample = all_columns_data[0:3]
+            logger.info("before data_visualization:")
+            model_select_type_dict, model_response = select_data_visualization_type(model_id, search_box,
+                                                                                    all_columns_data_sample,
+                                                                                    prompt_map, environment_dict)
+            logger.info("after data_visualization:")
             model_select_type = model_select_type_dict["show_type"]
             model_select_type_columns = model_select_type_dict["format_data"][0]
             data_list = search_data[model_select_type_columns].values.tolist()
 
             # 返回格式校验
-            if len(columns) != 2:
+            if len(columns) > 2:
                 if model_select_type == "table":
-                    return "table", all_columns_data, "-1", []
+                    logger.info("return data_visualization:")
+                    return "table", all_columns_data, "bar", all_columns_data, model_response
                 else:
                     if len(model_select_type_columns) == 2:
-                        return "table", all_columns_data, model_select_type, [model_select_type_columns] + data_list
+                        reindex_columns = model_select_type_columns + [col for col in columns if
+                                                                       col not in model_select_type_columns]
+                        reindex_data = search_data[reindex_columns].values.tolist()
+                        logger.info("return data_visualization:")
+                        return "table", all_columns_data, model_select_type, [
+                                                                                 reindex_columns] + reindex_data, model_response
                     else:
-                        return "table", all_columns_data, "-1", []
-            else:
+                        return "table", all_columns_data, "bar", all_columns_data, model_response
+            elif len(columns) == 2:
                 if model_select_type == "table":
-                    return "table", all_columns_data, "-1", []
+                    return "table", all_columns_data, "bar", all_columns_data, model_response
                 else:
-                    return model_select_type, [model_select_type_columns] + data_list, "-1", []
+                    return model_select_type, [model_select_type_columns] + data_list, "-1", [], model_response
+            else:
+                return "table", all_columns_data, "-1", [], model_response
     except Exception as e:
         logger.error("data_visualization is error {}", e)
-        return "table", all_columns_data, "-1", []
+        model_response = ModelResponse()
+        model_response.token_info = {}
+        return "table", all_columns_data, "-1", [], model_response
 
 
-def create_vector_embedding_with_bedrock(text, index_name):
+def create_vector_embedding(text, index_name):
+    model_name = embedding_info["embedding_name"]
+    if embedding_info["embedding_platform"] == "bedrock":
+        return create_vector_embedding_with_bedrock(text, index_name, model_name)
+    else:
+        return create_vector_embedding_with_sagemaker(model_name, text, index_name)
+
+
+def create_vector_embedding_with_bedrock(text, index_name, model_name):
     payload = {"inputText": f"{text}"}
     body = json.dumps(payload)
-    modelId = BEDROCK_EMBEDDING_MODEL
+    modelId = model_name
     accept = "application/json"
     contentType = "application/json"
 
@@ -404,14 +468,9 @@ def create_vector_embedding_with_sagemaker(endpoint_name, text, index_name):
     return {"_index": index_name, "text": text, "vector_field": embeddings}
 
 
-def generate_suggested_question(prompt_map, search_box, model_id=None):
+def generate_suggested_question(prompt_map, search_box, model_id=None, environment_dict=None):
     max_tokens = 2048
-    user_prompt, system_prompt = generate_suggest_question_prompt(prompt_map, search_box, model_id)
-    user_message = {"role": "user", "content": user_prompt}
-    messages = [user_message]
-    logger.info(f'{system_prompt=}')
-    logger.info(f'{messages=}')
-    response = invoke_model_claude3(model_id, system_prompt, messages, max_tokens)
-    final_response = response.get("content")[0].get("text")
-
-    return final_response
+    user_prompt, system_prompt = generate_suggest_question_prompt(prompt_map, search_box, model_id, environment_dict)
+    model_response = invoke_llm_model(model_id, system_prompt, user_prompt, max_tokens)
+    final_response = model_response.text
+    return final_response, model_response

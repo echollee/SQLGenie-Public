@@ -19,6 +19,29 @@ def delete_entity_sample(profile_name, id):
     st.session_state["cot_sample_search"][profile_name] = new_value
     st.success(f'Sample {id} deleted.')
 
+@st.dialog("Modify the SQL value")
+def edit_value(profile, entity_item, entity_id):
+    query_value = entity_item["query"]
+    comment_value = entity_item["comment"]
+    query = st.text_input('Question', value=query_value)
+    comment = st.text_area('Answer(SQL)', value=comment_value, height=300)
+    left_button, right_button = st.columns([1, 2])
+    with right_button:
+        if st.button("Submit"):
+            if query == query_value:
+                VectorStore.add_sample(profile, query, comment)
+            else:
+                VectorStore.delete_sample(profile, entity_id)
+                VectorStore.add_sample(profile, query, comment)
+                st.success("Sample updated successfully!")
+                with st.spinner('Update Index ...'):
+                    time.sleep(2)
+                st.session_state["cot_sample_search"][profile] = VectorStore.get_all_samples(profile)
+                st.rerun()
+    with left_button:
+        if st.button("Cancel"):
+            st.rerun()
+
 def main():
     load_dotenv()
     logger.info('start agent cot management')
@@ -84,6 +107,8 @@ def main():
                     # st.write(f"Sample: {sample}")
                     with st.expander(sample['query']):
                         st.code(sample['comment'])
+                        st.button('Edit ' + sample['id'], on_click=edit_value,
+                                  args=[current_profile, sample, sample['id']])
                         st.button('Delete ' + sample['id'], on_click=delete_entity_sample, args=[current_profile, sample['id']])
 
         with tab_add:
