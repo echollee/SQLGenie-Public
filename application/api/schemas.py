@@ -135,3 +135,7 @@ class HistoryMessage(BaseModel):
 
 class ChatHistory(BaseModel):
     messages: list[HistoryMessage]
+
+
+class CodeModel(BaseModel):
+    code: str

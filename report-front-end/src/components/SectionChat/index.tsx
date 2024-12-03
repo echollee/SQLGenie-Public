@@ -175,7 +175,7 @@ export default function SectionChat({
         {messageHistory?.length === 0 &&
           statusMessage?.length === 0 &&
           !isLoadingSessionHistory &&
-          !loadingProfile && <center>GenBI Chatbot</center>}
+          !loadingProfile && <center>Chatbot</center>}
       </div>
 
       <div className={styles.input_container}>

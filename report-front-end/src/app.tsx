@@ -12,6 +12,7 @@ import SectionChat from "./components/SectionChat";
 import TopNav from "./components/TopNav";
 import { GlobalContext } from "./hooks/useGlobalContext";
 import useUnauthorized from "./hooks/useUnauthorized";
+import FeishuSsoLogin from './pages/FeishuSsoLogin.tsx'
 
 export type SignOut = UseAuthenticator["signOut"];
 
@@ -26,6 +27,7 @@ const App: React.FC = () => {
         <div>
           <Routes>
             <Route index path="/" element={<Playground />} />
+            <Route path='/feishusso' element={<FeishuSsoLogin/>}/>
           </Routes>
         </div>
       </BrowserRouter>

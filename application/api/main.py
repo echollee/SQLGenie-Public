@@ -1,5 +1,7 @@
 import json
 import traceback
+
+import requests
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from nlq.business.log_store import LogManagement
@@ -8,7 +10,7 @@ from utils.logging import getLogger
 from utils.tool import serialize_timestamp
 from .enum import ContentEnum
 from .schemas import Question, Option, CustomQuestion, FeedBackInput, HistoryRequest, HistorySessionRequest, \
-    Message, HistoryMessage
+    Message, HistoryMessage, CodeModel
 from . import service
 from nlq.business.nlq_chain import NLQChain
 from dotenv import load_dotenv
@@ -23,6 +25,54 @@ router = APIRouter(prefix="/qa", tags=["qa"])
 load_dotenv()
 
 ENABLE_USER_PROFILE_MAP = os.getenv("ENABLE_USER_PROFILE_MAP")
+FEISHU_APP_ID = os.getenv("VITE_FEISHU_APP_ID")
+FEISHU_APP_SECRET = os.getenv("VITE_FEISHU_APP_SECRET")
+
+
+def get_feishu_access_token():
+    response = requests.post(
+        'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', timeout=3,
+        data=json.dumps({"app_id": FEISHU_APP_ID, "app_secret": FEISHU_APP_SECRET})
+    )
+    if 'tenant_access_token' in response.json():
+        access_token = response.json()['tenant_access_token']
+        return access_token
+    else:
+        return None
+
+def get_feishu_user_info(user_id):
+    headers = {
+        "Authorization": "Bearer {}".format(get_feishu_access_token()),
+        "Content-Type": "application/json;charset=UTF-8",
+    }
+    try:
+        response = requests.get(
+            f'https://open.feishu.cn/open-apis/contact/v3/users/{user_id}',
+            headers=headers, timeout=3
+        )
+        return response.json()
+    except requests.exceptions.Timeout as e:
+        return {"code": -1, "msg": e.__str__()}
+
+@router.post("/feishu_token")
+def feishu_token(codemodel: CodeModel):
+    headers = {
+        "Authorization": "Bearer {}".format(get_feishu_access_token()),
+        "Content-Type": "application/json;charset=UTF-8",
+    }
+    # print(codemodel.code)
+    try:
+        response = requests.post(
+            'https://open.feishu.cn/open-apis/authen/v1/access_token',
+            headers=headers, timeout=3,
+            data=json.dumps({"grant_type": "authorization_code", "code": codemodel.code})
+        )
+        data = response.json()
+        print('data:', data['data'])
+        # return get_feishu_user_info(data['data']["open_id"])
+        return data['data']
+    except requests.exceptions.Timeout as e:
+        return {"code": -1, "msg": e.__str__()}
 
 
 @router.get("/option", response_model=Option)
