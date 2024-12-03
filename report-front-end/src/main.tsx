@@ -10,7 +10,7 @@ import {
     LOGIN_TYPE,
     AUTH_WITH_SSO,
     AUTH_WITH_AZUREAD,
-    AUTH_WITH_FEISHU, FEISHU_APP_ID, BACKEND_URL,
+    AUTH_WITH_FEISHU
 } from "./utils/constants";
 import {Storage} from "./utils/helpers/storage";
 import userReduxStore from "./utils/helpers/store";
@@ -46,19 +46,17 @@ if (AUTH_WITH_FEISHU) {
     script0.src = 'https://cdn.staticfile.org/jquery/1.10.2/jquery.min.js';
     document.head.appendChild(script0);
 
-    // 创建第二个 script 元素
-    const script3 = document.createElement('script');
-    script3.type = 'text/javascript';
-    script3.async = false;
-    script3.src = 'https://unpkg.com/vconsole/dist/vconsole.min.js';
-    document.head.appendChild(script3);
+    const script1 = document.createElement('script');
+    script1.type = 'text/javascript';
+    script1.async = false;
+    script1.src = 'https://unpkg.com/vconsole/dist/vconsole.min.js';
+    document.head.appendChild(script1);
 
-    // 创建第二个 script 元素
-    const script4 = document.createElement('script');
-    script4.type = 'text/javascript';
-    script4.async = false;
-    script4.src = 'https://dhsso.s3.cn-north-1.amazonaws.com.cn/js/vconsole.js';
-    document.head.appendChild(script4);
+    const script2 = document.createElement('script');
+    script2.type = 'text/javascript';
+    script2.async = false;
+    script2.src = 'https://dhsso.s3.cn-north-1.amazonaws.com.cn/js/vconsole.js';
+    document.head.appendChild(script2);
     rootComponent = <Login.Feishu/>;
 }
 
