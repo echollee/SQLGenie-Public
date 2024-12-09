@@ -82,3 +82,5 @@ export const LOCAL_STORAGE_KEYS = {
 } as const;
 
 export const FEISHU_APP_ID = import.meta.env.VITE_FEISHU_APP_ID;
+export const COGNITO_USER_PWD = import.meta.env.VITE_COGNITO_USER_PWD;
+

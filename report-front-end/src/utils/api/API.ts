@@ -110,7 +110,7 @@ export async function getSessions(sessionItem: SessionItem) {
     const data = await request.post(`qa/get_sessions`, {
       data: sessionItem,
       errorHandler: (error) => {
-        toast.error("getSessions error");
+        // toast.error("getSessions error");
         console.error("getSessions error: ", error);
       },
     });
@@ -139,10 +139,11 @@ export async function deleteHistoryBySession(historyItem: HistoryItem) {
 export async function getHistoryBySession(historyItem: HistoryItem) {
   // call api
   try {
+    // console.log('historyItem',historyItem);
     const data = await request.post(`qa/get_history_by_session`, {
       data: historyItem,
       errorHandler: (error) => {
-        toast.error("getHistoryBySession error");
+        // toast.error("getHistoryBySession error");
         console.error("getHistoryBySession error: ", error);
       },
     });
