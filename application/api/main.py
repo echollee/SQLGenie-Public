@@ -68,7 +68,7 @@ def feishu_token(codemodel: CodeModel):
             data=json.dumps({"grant_type": "authorization_code", "code": codemodel.code})
         )
         data = response.json()
-        print('data:', data['data'])
+        # print('data:', data['data'])
         # return get_feishu_user_info(data['data']["open_id"])
         return data['data']
     except requests.exceptions.Timeout as e:
